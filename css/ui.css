@@ -106,3 +106,16 @@ header p{margin-top:8px; font-size:13px; color:var(--ink-soft); font-weight:700;
 @media (prefers-reduced-motion:reduce){
   .panel{transition:none;} #toast{transition:none;}
 }
+
+/* 眼神感應小預覽:證明鏡頭真的有在抓畫面 */
+#camPreview{
+  display:none; position:fixed; right:16px; bottom:16px; z-index:50;
+  width:120px; height:90px; object-fit:cover;
+  border-radius:14px; border:3px solid var(--leaf);
+  box-shadow:0 6px 18px rgba(0,0,0,.25);
+  transform:scaleX(-1); /* 鏡像,像自拍鏡頭一樣符合直覺 */
+  background:#000;
+}
+@media (max-width:560px){
+  #camPreview{ width:84px; height:63px; right:10px; bottom:74px; }
+}

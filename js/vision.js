@@ -46,32 +46,53 @@ async function enableCamera(){
     patchFetch();
     if(!faceapi.nets.tinyFaceDetector.isLoaded)
       await faceapi.nets.tinyFaceDetector.loadFromUri('faceapi://weights');
+    // 放寬鏡頭參數:部分外接/USB 鏡頭沒有 facingMode 資訊,寫死 'user' 可能導致 OverconstrainedError
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { width:320, height:240, facingMode:'user' }, audio:false });
+      video: { width:{ideal:320}, height:{ideal:240}, facingMode:{ideal:'user'} }, audio:false });
     video = document.createElement('video');
     video.srcObject = stream; video.muted = true; video.playsInline = true;
     await video.play();
     A.camera = 'on';
     A.lastFace = YY.now();
     detTimer = setInterval(detect, 450);
+    showPreview(stream);
     YY.flash('👀 眼神感應啟動!看著牠、或轉頭走開,牠都會知道', 3600);
     YY.sfx.ding();
   }catch(e){
     A.camera = 'denied';
+    console.error('[眼神感應] 啟動失敗:', e);
     let msg = '拿不到鏡頭權限,改用游標感應(游標一陣子沒動=你不在看)';
     if(e && e.name === 'NotAllowedError') msg = '瀏覽器封鎖了鏡頭權限(可能之前按過「封鎖」),改用游標感應。要重開請點網址列左邊的鎖頭圖示調整權限';
     else if(e && e.name === 'NotFoundError') msg = '找不到鏡頭裝置,改用游標感應';
     else if(e && e.name === 'NotReadableError') msg = '鏡頭正被其他分頁或App佔用,改用游標感應';
+    else if(e && e.name === 'OverconstrainedError') msg = '這個鏡頭不支援指定的畫面設定,改用游標感應';
     else if(!window.isSecureContext) msg = '這個網址不是 HTTPS,瀏覽器不允許用鏡頭,改用游標感應';
-    YY.flash(msg, 4200);
+    YY.flash(msg + '(詳細錯誤已印在瀏覽器 Console,按 F12 可查看)', 4600);
   }
   renderEyeBtn();
 }
+/* ---------- 小鏡頭預覽:讓你親眼確認到底有沒有真的抓到畫面 ---------- */
+let previewEl = null;
+function showPreview(stream){
+  if(!previewEl){
+    previewEl = document.createElement('video');
+    previewEl.id = 'camPreview';
+    previewEl.muted = true; previewEl.playsInline = true; previewEl.autoplay = true;
+    document.body.appendChild(previewEl);
+  }
+  previewEl.srcObject = stream;
+  previewEl.style.display = 'block';
+}
+function hidePreview(){
+  if(previewEl){ previewEl.style.display = 'none'; previewEl.srcObject = null; }
+}
+
 function disableCamera(){
   const A = YY.attention;
   clearInterval(detTimer);
   if(video && video.srcObject) video.srcObject.getTracks().forEach(tr => tr.stop());
   video = null; A.camera = 'off';
+  hidePreview();
   YY.flash('眼神感應已關閉,改用游標感應', 2600);
   renderEyeBtn();
 }
