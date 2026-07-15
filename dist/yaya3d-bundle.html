@@ -15,7 +15,7 @@
 </style>
 <style>
 :root{
-  --bg:#EAF1E4; --ink:#2C4034; --ink-soft:#5C7263;
+  --bg:#DCEEC4; --ink:#2C4034; --ink-soft:#5C7263;
   --card:#FFFFFF; --leaf:#6FA25E; --pot:#C4704F; --blush:#FFA8B4;
   --r-common:#5C7263; --r-rare:#3E6FD6; --r-legend:#C4703A;
 }
@@ -187,15 +187,15 @@ YY.FACE_WEIGHTS = {
 window.YY = window.YY || {};   // faceweights.js 會先建好
 
 YY.PAL = {
-  bg:      0xEAF1E4,   // 更亮更透的房間底色
-  floor:   0xD9E4C9,
-  wall:    0xF0EBDC,
-  rug:     0xF2E2BE,
+  bg:      0xDCEEC4,   // 飽和度提高的房間底色(不那麼死白)
+  floor:   0xBFDCA0,   // 更有份量的草綠地板
+  wall:    0xF5DFAE,   // 暖一點、更飽和的牆面
+  rug:     0xEEC373,   // 濃一點的芥末黃地毯
   ink:     0x2C4034,
   pot:     0xC4704F,
-  leaf:    0x6FA25E,
-  leafDark:0x4E7C43,
-  glass:   0xD7EAF3,
+  leaf:    0x5D9A4B,
+  leafDark:0x3F6D35,
+  glass:   0xA9D8EC,   // 更藍、更透的天空窗
 };
 
 YY.rand  = (a, b) => a + Math.random() * (b - a);
@@ -883,7 +883,12 @@ async function enableCamera(){
     YY.sfx.ding();
   }catch(e){
     A.camera = 'denied';
-    YY.flash('拿不到鏡頭權限,改用游標感應(游標一陣子沒動=你不在看)', 3600);
+    let msg = '拿不到鏡頭權限,改用游標感應(游標一陣子沒動=你不在看)';
+    if(e && e.name === 'NotAllowedError') msg = '瀏覽器封鎖了鏡頭權限(可能之前按過「封鎖」),改用游標感應。要重開請點網址列左邊的鎖頭圖示調整權限';
+    else if(e && e.name === 'NotFoundError') msg = '找不到鏡頭裝置,改用游標感應';
+    else if(e && e.name === 'NotReadableError') msg = '鏡頭正被其他分頁或App佔用,改用游標感應';
+    else if(!window.isSecureContext) msg = '這個網址不是 HTTPS,瀏覽器不允許用鏡頭,改用游標感應';
+    YY.flash(msg, 4200);
   }
   renderEyeBtn();
 }
@@ -1260,7 +1265,7 @@ YY.initWorld = function(){
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputEncoding = THREE.sRGBEncoding;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.14;   // 提亮:原本 .92 偏暗
+  renderer.toneMappingExposure = 1.0;    // 比純提亮版稍降,讓顏色不被沖淡
   document.getElementById('stage').appendChild(renderer.domElement);
   YY.renderer = renderer;
 
@@ -1275,8 +1280,8 @@ YY.initWorld = function(){
   updateCam();
 
   /* ---------- 光(整體調亮,正面補一盞柔光) ---------- */
-  scene.add(new THREE.HemisphereLight(0xFBF3E0, 0xAFC49C, .82));
-  scene.add(new THREE.AmbientLight(0xF3ECD8, .42));
+  scene.add(new THREE.HemisphereLight(0xFBF3E0, 0xAFC49C, .68));
+  scene.add(new THREE.AmbientLight(0xF3ECD8, .30));
   const sun = new THREE.DirectionalLight(0xFFF1D6, .95);
   sun.position.set(6, 9, 5);
   sun.castShadow = true;
@@ -1285,7 +1290,7 @@ YY.initWorld = function(){
   sun.shadow.camera.top = 9;   sun.shadow.camera.bottom = -9;
   scene.add(sun);
   /* 正面補光:讓芽芽的臉不會黑黑的 */
-  const fill = new THREE.DirectionalLight(0xFFFFFF, .34);
+  const fill = new THREE.DirectionalLight(0xFFFFFF, .26);
   fill.position.set(-3, 5, 9);
   scene.add(fill);
 

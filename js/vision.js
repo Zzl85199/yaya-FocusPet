@@ -58,7 +58,12 @@ async function enableCamera(){
     YY.sfx.ding();
   }catch(e){
     A.camera = 'denied';
-    YY.flash('拿不到鏡頭權限,改用游標感應(游標一陣子沒動=你不在看)', 3600);
+    let msg = '拿不到鏡頭權限,改用游標感應(游標一陣子沒動=你不在看)';
+    if(e && e.name === 'NotAllowedError') msg = '瀏覽器封鎖了鏡頭權限(可能之前按過「封鎖」),改用游標感應。要重開請點網址列左邊的鎖頭圖示調整權限';
+    else if(e && e.name === 'NotFoundError') msg = '找不到鏡頭裝置,改用游標感應';
+    else if(e && e.name === 'NotReadableError') msg = '鏡頭正被其他分頁或App佔用,改用游標感應';
+    else if(!window.isSecureContext) msg = '這個網址不是 HTTPS,瀏覽器不允許用鏡頭,改用游標感應';
+    YY.flash(msg, 4200);
   }
   renderEyeBtn();
 }

@@ -4,15 +4,15 @@
 window.YY = window.YY || {};   // faceweights.js 會先建好
 
 YY.PAL = {
-  bg:      0xEAF1E4,   // 更亮更透的房間底色
-  floor:   0xD9E4C9,
-  wall:    0xF0EBDC,
-  rug:     0xF2E2BE,
+  bg:      0xDCEEC4,   // 飽和度提高的房間底色(不那麼死白)
+  floor:   0xBFDCA0,   // 更有份量的草綠地板
+  wall:    0xF5DFAE,   // 暖一點、更飽和的牆面
+  rug:     0xEEC373,   // 濃一點的芥末黃地毯
   ink:     0x2C4034,
   pot:     0xC4704F,
-  leaf:    0x6FA25E,
-  leafDark:0x4E7C43,
-  glass:   0xD7EAF3,
+  leaf:    0x5D9A4B,
+  leafDark:0x3F6D35,
+  glass:   0xA9D8EC,   // 更藍、更透的天空窗
 };
 
 YY.rand  = (a, b) => a + Math.random() * (b - a);
