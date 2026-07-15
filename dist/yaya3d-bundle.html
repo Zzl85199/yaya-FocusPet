@@ -15,7 +15,7 @@
 </style>
 <style>
 :root{
-  --bg:#DCEEC4; --ink:#2C4034; --ink-soft:#5C7263;
+  --bg:#C7E2AC; --ink:#2C4034; --ink-soft:#5C7263;
   --card:#FFFFFF; --leaf:#6FA25E; --pot:#C4704F; --blush:#FFA8B4;
   --r-common:#5C7263; --r-rare:#3E6FD6; --r-legend:#C4703A;
 }
@@ -200,15 +200,15 @@ YY.FACE_WEIGHTS = {
 window.YY = window.YY || {};   // faceweights.js 會先建好
 
 YY.PAL = {
-  bg:      0xDCEEC4,   // 飽和度提高的房間底色(不那麼死白)
-  floor:   0xBFDCA0,   // 更有份量的草綠地板
-  wall:    0xF5DFAE,   // 暖一點、更飽和的牆面
-  rug:     0xEEC373,   // 濃一點的芥末黃地毯
+  bg:      0xC7E2AC,   // 再深一階,不要死白
+  floor:   0xA8CF88,
+  wall:    0xEDD394,
+  rug:     0xE0B15E,
   ink:     0x2C4034,
   pot:     0xC4704F,
-  leaf:    0x5D9A4B,
-  leafDark:0x3F6D35,
-  glass:   0xA9D8EC,   // 更藍、更透的天空窗
+  leaf:    0x559244,
+  leafDark:0x395F2E,
+  glass:   0x8FCBE6,
 };
 
 YY.rand  = (a, b) => a + Math.random() * (b - a);
@@ -854,20 +854,31 @@ YY.attention = {
 
 let video = null, detTimer = 0, prevWatch = true;
 
-/* ---------- 內嵌模型檔:攔截 faceapi:// 的 fetch ---------- */
-function patchFetch(){
-  const orig = window.fetch.bind(window);
-  window.fetch = function(u, o){
-    if(typeof u === 'string' && u.startsWith('faceapi://')){
-      const key = u.split('/').pop();
-      const b64 = (YY.FACE_WEIGHTS || {})[key];
-      if(!b64) return Promise.reject(new Error('missing weight ' + key));
-      const bin = atob(b64), bytes = new Uint8Array(bin.length);
-      for(let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      return Promise.resolve(new Response(bytes, { status:200 }));
-    }
-    return orig(u, o);
-  };
+/* ---------- 內嵌模型檔:直接把 base64 解碼餵給 tfjs,完全不經過 fetch ----------
+   原本用攔截 fetch('faceapi://...') 的做法會失敗,因為 face-api.js 內部的 tfjs
+   在頁面載入當下就把原生 fetch 快取起來了,之後才 patch window.fetch 已經來不及。
+   改用 tf.io.weightsLoaderFactory + loadFromWeightMap,整段流程零網路請求。 */
+function b64ToBuffer(b64){
+  const bin = atob(b64), bytes = new Uint8Array(bin.length);
+  for(let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes.buffer;
+}
+async function loadTinyFaceDetectorOffline(){
+  if(faceapi.nets.tinyFaceDetector.isLoaded) return;
+  const W = YY.FACE_WEIGHTS || {};
+  const manifestB64 = W['tiny_face_detector_model-weights_manifest.json'];
+  if(!manifestB64) throw new Error('缺少內嵌的臉部模型 manifest');
+  const manifest = JSON.parse(atob(manifestB64));
+  const loadWeights = faceapi.tf.io.weightsLoaderFactory(async (paths) => {
+    return paths.map(p => {
+      const name = p.split('/').pop();
+      const b64 = W[name];
+      if(!b64) throw new Error('缺少內嵌的權重檔:' + name);
+      return b64ToBuffer(b64);
+    });
+  });
+  const weightMap = await loadWeights(manifest, '');
+  faceapi.nets.tinyFaceDetector.loadFromWeightMap(weightMap);
 }
 
 /* ---------- 開關鏡頭 ---------- */
@@ -881,9 +892,7 @@ async function enableCamera(){
   A.camera = 'starting'; renderEyeBtn();
   YY.flash('正在啟動眼神感應…(影像只在你的裝置上分析,不會上傳)', 3400);
   try{
-    patchFetch();
-    if(!faceapi.nets.tinyFaceDetector.isLoaded)
-      await faceapi.nets.tinyFaceDetector.loadFromUri('faceapi://weights');
+    await loadTinyFaceDetectorOffline();
     // 放寬鏡頭參數:部分外接/USB 鏡頭沒有 facingMode 資訊,寫死 'user' 可能導致 OverconstrainedError
     const stream = await navigator.mediaDevices.getUserMedia({
       video: { width:{ideal:320}, height:{ideal:240}, facingMode:{ideal:'user'} }, audio:false });
@@ -1299,7 +1308,7 @@ YY.initWorld = function(){
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputEncoding = THREE.sRGBEncoding;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.0;    // 比純提亮版稍降,讓顏色不被沖淡
+  renderer.toneMappingExposure = 0.88;   // 再降一點,避免整體死白
   document.getElementById('stage').appendChild(renderer.domElement);
   YY.renderer = renderer;
 
@@ -1314,9 +1323,9 @@ YY.initWorld = function(){
   updateCam();
 
   /* ---------- 光(整體調亮,正面補一盞柔光) ---------- */
-  scene.add(new THREE.HemisphereLight(0xFBF3E0, 0xAFC49C, .68));
-  scene.add(new THREE.AmbientLight(0xF3ECD8, .30));
-  const sun = new THREE.DirectionalLight(0xFFF1D6, .95);
+  scene.add(new THREE.HemisphereLight(0xFBF3E0, 0xAFC49C, .55));
+  scene.add(new THREE.AmbientLight(0xF3ECD8, .22));
+  const sun = new THREE.DirectionalLight(0xFFF1D6, .90);
   sun.position.set(6, 9, 5);
   sun.castShadow = true;
   sun.shadow.mapSize.set(1024, 1024);
@@ -1324,7 +1333,7 @@ YY.initWorld = function(){
   sun.shadow.camera.top = 9;   sun.shadow.camera.bottom = -9;
   scene.add(sun);
   /* 正面補光:讓芽芽的臉不會黑黑的 */
-  const fill = new THREE.DirectionalLight(0xFFFFFF, .26);
+  const fill = new THREE.DirectionalLight(0xFFFFFF, .20);
   fill.position.set(-3, 5, 9);
   scene.add(fill);
 

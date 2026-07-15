@@ -12,7 +12,7 @@ YY.initWorld = function(){
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputEncoding = THREE.sRGBEncoding;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.0;    // 比純提亮版稍降,讓顏色不被沖淡
+  renderer.toneMappingExposure = 0.88;   // 再降一點,避免整體死白
   document.getElementById('stage').appendChild(renderer.domElement);
   YY.renderer = renderer;
 
@@ -27,9 +27,9 @@ YY.initWorld = function(){
   updateCam();
 
   /* ---------- 光(整體調亮,正面補一盞柔光) ---------- */
-  scene.add(new THREE.HemisphereLight(0xFBF3E0, 0xAFC49C, .68));
-  scene.add(new THREE.AmbientLight(0xF3ECD8, .30));
-  const sun = new THREE.DirectionalLight(0xFFF1D6, .95);
+  scene.add(new THREE.HemisphereLight(0xFBF3E0, 0xAFC49C, .55));
+  scene.add(new THREE.AmbientLight(0xF3ECD8, .22));
+  const sun = new THREE.DirectionalLight(0xFFF1D6, .90);
   sun.position.set(6, 9, 5);
   sun.castShadow = true;
   sun.shadow.mapSize.set(1024, 1024);
@@ -37,7 +37,7 @@ YY.initWorld = function(){
   sun.shadow.camera.top = 9;   sun.shadow.camera.bottom = -9;
   scene.add(sun);
   /* 正面補光:讓芽芽的臉不會黑黑的 */
-  const fill = new THREE.DirectionalLight(0xFFFFFF, .26);
+  const fill = new THREE.DirectionalLight(0xFFFFFF, .20);
   fill.position.set(-3, 5, 9);
   scene.add(fill);
 

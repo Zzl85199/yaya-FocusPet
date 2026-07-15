@@ -16,20 +16,31 @@ YY.attention = {
 
 let video = null, detTimer = 0, prevWatch = true;
 
-/* ---------- 內嵌模型檔:攔截 faceapi:// 的 fetch ---------- */
-function patchFetch(){
-  const orig = window.fetch.bind(window);
-  window.fetch = function(u, o){
-    if(typeof u === 'string' && u.startsWith('faceapi://')){
-      const key = u.split('/').pop();
-      const b64 = (YY.FACE_WEIGHTS || {})[key];
-      if(!b64) return Promise.reject(new Error('missing weight ' + key));
-      const bin = atob(b64), bytes = new Uint8Array(bin.length);
-      for(let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      return Promise.resolve(new Response(bytes, { status:200 }));
-    }
-    return orig(u, o);
-  };
+/* ---------- 內嵌模型檔:直接把 base64 解碼餵給 tfjs,完全不經過 fetch ----------
+   原本用攔截 fetch('faceapi://...') 的做法會失敗,因為 face-api.js 內部的 tfjs
+   在頁面載入當下就把原生 fetch 快取起來了,之後才 patch window.fetch 已經來不及。
+   改用 tf.io.weightsLoaderFactory + loadFromWeightMap,整段流程零網路請求。 */
+function b64ToBuffer(b64){
+  const bin = atob(b64), bytes = new Uint8Array(bin.length);
+  for(let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes.buffer;
+}
+async function loadTinyFaceDetectorOffline(){
+  if(faceapi.nets.tinyFaceDetector.isLoaded) return;
+  const W = YY.FACE_WEIGHTS || {};
+  const manifestB64 = W['tiny_face_detector_model-weights_manifest.json'];
+  if(!manifestB64) throw new Error('缺少內嵌的臉部模型 manifest');
+  const manifest = JSON.parse(atob(manifestB64));
+  const loadWeights = faceapi.tf.io.weightsLoaderFactory(async (paths) => {
+    return paths.map(p => {
+      const name = p.split('/').pop();
+      const b64 = W[name];
+      if(!b64) throw new Error('缺少內嵌的權重檔:' + name);
+      return b64ToBuffer(b64);
+    });
+  });
+  const weightMap = await loadWeights(manifest, '');
+  faceapi.nets.tinyFaceDetector.loadFromWeightMap(weightMap);
 }
 
 /* ---------- 開關鏡頭 ---------- */
@@ -43,9 +54,7 @@ async function enableCamera(){
   A.camera = 'starting'; renderEyeBtn();
   YY.flash('正在啟動眼神感應…(影像只在你的裝置上分析,不會上傳)', 3400);
   try{
-    patchFetch();
-    if(!faceapi.nets.tinyFaceDetector.isLoaded)
-      await faceapi.nets.tinyFaceDetector.loadFromUri('faceapi://weights');
+    await loadTinyFaceDetectorOffline();
     // 放寬鏡頭參數:部分外接/USB 鏡頭沒有 facingMode 資訊,寫死 'user' 可能導致 OverconstrainedError
     const stream = await navigator.mediaDevices.getUserMedia({
       video: { width:{ideal:320}, height:{ideal:240}, facingMode:{ideal:'user'} }, audio:false });
