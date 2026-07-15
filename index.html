@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>芽芽有點怕你 · 3D</title>
+<link rel="stylesheet" href="css/fonts.css">
+<link rel="stylesheet" href="css/ui.css">
+</head>
+<body>
+<div id="stage"></div>
+
+<header>
+  <h1>芽芽有點怕你 · 3D</h1>
+  <p>拖曳旋轉房間 · 點點芽芽 · 收集全部飾品</p>
+</header>
+
+<div id="hud">
+  <div id="who"><span id="whoName">芽芽</span><div id="trustBar"><i id="trustFill"></i></div>
+  <div id="watchState"></div></div>
+</div>
+
+<div id="toast"></div>
+
+<nav id="bar">
+  <button id="btnDraw">🥚 抽扭蛋</button>
+  <button id="btnWardrobe">👒 衣櫃</button>
+  <button id="btnFamily">🏠 家族</button>
+  <button id="btnBerry">🫐 餵莓果</button>
+  <button id="btnEye">👀 眼神感應</button>
+</nav>
+
+<aside id="wardrobe" class="panel">
+  <div class="ph"><b>芽芽的衣櫃</b><span id="collCount"></span><button class="x" data-close="wardrobe">✕</button></div>
+  <div class="pb" id="wardrobeBody"></div>
+</aside>
+
+<aside id="family" class="panel">
+  <div class="ph"><b>芽芽的家族</b><span id="famCount"></span><button class="x" data-close="family">✕</button></div>
+  <div class="pb" id="familyBody"></div>
+</aside>
+
+<script src="js/vendor/three.min.js"></script>
+<script src="js/vendor/face-api.min.js"></script>
+<script src="js/vendor/faceweights.js"></script>
+<script src="js/config.js"></script>
+<script src="js/items.js"></script>
+<script src="js/family.js"></script>
+<script src="js/vision.js"></script>
+<script src="js/creature.js"></script>
+<script src="js/world.js"></script>
+<script src="js/gacha.js"></script>
+<script src="js/events.js"></script>
+<script src="js/selfplay.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,118 @@
+/* ============================================================
+   vision.js — 眼神感應 👀
+   開鏡頭偵測你的臉:有看著螢幕 → 牠來找你玩
+   沒看(轉頭/離開)→ 牠自己玩自己的
+   沒開鏡頭或被拒絕時,退回用「游標有沒有在動」判斷
+   ============================================================ */
+(function(){
+const $ = s => document.querySelector(s);
+
+YY.attention = {
+  watching: true,       // 你現在有沒有在看牠
+  since: 0,             // 這個狀態持續多久了
+  camera: 'off',        // off | starting | on | denied
+  lastFace: 0,
+};
+
+let video = null, detTimer = 0, prevWatch = true;
+
+/* ---------- 內嵌模型檔:攔截 faceapi:// 的 fetch ---------- */
+function patchFetch(){
+  const orig = window.fetch.bind(window);
+  window.fetch = function(u, o){
+    if(typeof u === 'string' && u.startsWith('faceapi://')){
+      const key = u.split('/').pop();
+      const b64 = (YY.FACE_WEIGHTS || {})[key];
+      if(!b64) return Promise.reject(new Error('missing weight ' + key));
+      const bin = atob(b64), bytes = new Uint8Array(bin.length);
+      for(let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return Promise.resolve(new Response(bytes, { status:200 }));
+    }
+    return orig(u, o);
+  };
+}
+
+/* ---------- 開關鏡頭 ---------- */
+async function enableCamera(){
+  const A = YY.attention;
+  if(A.camera === 'on'){ disableCamera(); return; }
+  if(!window.faceapi || !navigator.mediaDevices){
+    YY.flash('這個環境沒辦法用鏡頭,改用游標感應', 3000);
+    return;
+  }
+  A.camera = 'starting'; renderEyeBtn();
+  YY.flash('正在啟動眼神感應…(影像只在你的裝置上分析,不會上傳)', 3400);
+  try{
+    patchFetch();
+    if(!faceapi.nets.tinyFaceDetector.isLoaded)
+      await faceapi.nets.tinyFaceDetector.loadFromUri('faceapi://weights');
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { width:320, height:240, facingMode:'user' }, audio:false });
+    video = document.createElement('video');
+    video.srcObject = stream; video.muted = true; video.playsInline = true;
+    await video.play();
+    A.camera = 'on';
+    A.lastFace = YY.now();
+    detTimer = setInterval(detect, 450);
+    YY.flash('👀 眼神感應啟動!看著牠、或轉頭走開,牠都會知道', 3600);
+    YY.sfx.ding();
+  }catch(e){
+    A.camera = 'denied';
+    YY.flash('拿不到鏡頭權限,改用游標感應(游標一陣子沒動=你不在看)', 3600);
+  }
+  renderEyeBtn();
+}
+function disableCamera(){
+  const A = YY.attention;
+  clearInterval(detTimer);
+  if(video && video.srcObject) video.srcObject.getTracks().forEach(tr => tr.stop());
+  video = null; A.camera = 'off';
+  YY.flash('眼神感應已關閉,改用游標感應', 2600);
+  renderEyeBtn();
+}
+
+const detOpts = () => new faceapi.TinyFaceDetectorOptions({ inputSize:160, scoreThreshold:.4 });
+async function detect(){
+  if(!video || video.paused) return;
+  try{
+    const r = await faceapi.detectSingleFace(video, detOpts());
+    if(r) YY.attention.lastFace = YY.now();
+  }catch(e){ /* 單次失敗不理它 */ }
+}
+
+/* ---------- 每幀判斷:你在看嗎? ---------- */
+YY.updateAttention = function(t){
+  const A = YY.attention;
+  let w;
+  if(A.camera === 'on'){
+    w = (t - A.lastFace) < 1700;           // 1.7 秒內有偵測到正臉
+  } else {
+    const mo = YY.mouse;
+    w = mo.inside && (t - mo.lastMove) < 7000;  // 游標感應
+  }
+  if(w !== prevWatch){
+    prevWatch = w;
+    A.watching = w; A.since = t;
+    if(YY.onAttentionChange) YY.onAttentionChange(w, t);
+    renderStatus();
+  }
+  A.watching = w;
+};
+
+/* ---------- 介面 ---------- */
+function renderEyeBtn(){
+  const b = $('#btnEye'); if(!b) return;
+  b.textContent = { off:'👀 眼神感應', starting:'👀 啟動中…', on:'👀 感應中', denied:'👀 眼神感應' }[YY.attention.camera];
+  b.classList.toggle('live', YY.attention.camera === 'on');
+}
+function renderStatus(){
+  const el = $('#watchState'); if(!el) return;
+  el.textContent = YY.attention.watching ? '👀 牠知道你在看' : '🍃 你不在,自己玩中';
+}
+YY.renderWatchStatus = renderStatus;
+
+YY.initVision = function(){
+  $('#btnEye').onclick = enableCamera;
+  renderEyeBtn(); renderStatus();
+};
+})();

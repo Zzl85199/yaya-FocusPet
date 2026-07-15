@@ -1,0 +1,16 @@
+{
+  "name": "yaya3d",
+  "version": "1.0.0",
+  "description": "芽芽有點怕你 · 3D",
+  "main": "index.js",
+  "scripts": {
+    "build": "node tools/build.js",
+    "test": "node tools/smoke.js",
+    "start": "npx serve ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {},
+  "devDependencies": {}
+}
