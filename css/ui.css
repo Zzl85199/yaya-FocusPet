@@ -40,6 +40,34 @@ header p{margin-top:8px; font-size:13px; color:var(--ink-soft); font-weight:700;
   transition:opacity .25s, transform .25s; max-width:86vw; text-align:center;}
 #toast.on{opacity:1; transform:translateX(-50%) translateY(0);}
 
+/* ---------- mode label / focus streak (in HUD) ---------- */
+#modeLabel{margin-top:6px; font-size:11.5px; font-weight:800; color:var(--leaf); letter-spacing:.04em; display:none;}
+#modeLabel.on{display:block;}
+#focusStreak{margin-top:3px; font-size:12px; font-weight:800; color:var(--ink); letter-spacing:.03em; display:none;}
+#focusStreak.on{display:block;}
+
+/* ---------- mode switcher bar ---------- */
+#modeBar{position:fixed; top:18px; left:50%; transform:translateX(-50%);
+  display:flex; gap:8px; z-index:10;}
+#modeBar .modeBtn{
+  font-family:inherit; font-weight:800; font-size:13px; letter-spacing:.04em;
+  color:var(--ink); background:var(--card); border:2.5px solid var(--ink);
+  border-radius:999px; padding:7px 14px; cursor:pointer;
+  box-shadow:0 3px 0 rgba(44,64,52,.2); transition:transform .08s, opacity .2s;}
+#modeBar .modeBtn:active{transform:translateY(2px); box-shadow:none;}
+#modeBar .modeBtn.active{background:var(--leaf); color:#FFF;}
+#modeBar .modeBtn.locked{opacity:.4; cursor:not-allowed; filter:grayscale(.5);}
+#modeBar .modeBtn.locked:active{transform:none; box-shadow:0 3px 0 rgba(44,64,52,.2);}
+
+/* Focus Mode 進行中時,互動模式相關功能按鈕鎖起來 */
+#bar button.modeLocked{opacity:.35; cursor:not-allowed; filter:grayscale(.6);}
+#bar button.modeLocked:active{transform:none; box-shadow:0 4px 0 rgba(44,64,52,.22);}
+
+@media (max-width:560px){
+  #modeBar{top:auto; bottom:150px;}
+  #modeBar .modeBtn{font-size:11.5px; padding:6px 11px;}
+}
+
 /* ---------- bottom bar ---------- */
 #bar{position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
   display:flex; gap:10px; z-index:10; flex-wrap:wrap; justify-content:center; padding:0 12px;}

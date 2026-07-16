@@ -42,7 +42,45 @@ YY.bumpTrust = function(n){
     YY.flash(`${_curName()}現在超級黏你,好想一直待在你身邊 💕`, 3800);
 };
 
-/* ---------- 存檔 ---------- */
+/* ---------- 模式(Focus Mode / 互動模式 / 探索世界)----------
+   三種模式互斥:Focus Mode 開啟時不能切去互動或探索,
+   要先關閉 Focus Mode(眼神感應)才能換模式。
+   探索世界目前尚未開發,先當作預留位置。 */
+YY.MODES = ['interact', 'explore', 'focus'];
+YY.mode = 'interact';
+YY.MODE_LABEL = { interact:'🎮 互動模式', explore:'🌍 探索世界', focus:'🎯 Focus Mode 進行中' };
+YY.setMode = function(m){
+  if(YY.mode === m) return;
+  const prev = YY.mode;
+  YY.mode = m;
+  if(YY.onModeChange) YY.onModeChange(m, prev);
+};
+/* 目前能不能切去某個模式 */
+YY.canEnterMode = function(m){
+  if(m === YY.mode) return true;
+  if(YY.mode === 'focus') return false;   // Focus Mode 中,要先關閉才能換模式
+  if(m === 'explore') return false;       // 探索世界:尚未開發
+  return true;
+};
+
+/* ---------- 專注度計時(給獎勵機制/異種解鎖之後用的地基) ----------
+   連續看著螢幕的秒數會累積成 streakSec;
+   短暫移開(容錯時間內)不會讓 streak 歸零,只有離開夠久才重置。 */
+YY.FOCUS_GRACE_MS = 4000;   // 短暫移開的容錯時間
+YY.focus = { streakSec:0, totalSec:0, graceUntil:0 };
+YY.updateFocusStreak = function(t, dt){
+  const F = YY.focus;
+  if(YY.mode !== 'focus'){ F.streakSec = 0; return; }
+  if(YY.attention.watching){
+    F.streakSec += dt; F.totalSec += dt;
+    F.graceUntil = t + YY.FOCUS_GRACE_MS;
+  } else if(t > F.graceUntil){
+    F.streakSec = 0;   // 移開太久了,重新計時
+  }
+  /* 移開但還在容錯時間內 → streak 暫停、不歸零 */
+};
+
+
 YY.save = function(){
   try{
     localStorage.setItem('yy3d', JSON.stringify({

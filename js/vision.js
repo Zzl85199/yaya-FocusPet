@@ -52,7 +52,7 @@ async function enableCamera(){
     return;
   }
   A.camera = 'starting'; renderEyeBtn();
-  YY.flash('正在啟動眼神感應…(影像只在你的裝置上分析,不會上傳)', 3400);
+  YY.flash('正在啟動 Focus Mode…(影像只在你的裝置上分析,不會上傳)', 3400);
   try{
     await loadTinyFaceDetectorOffline();
     // 放寬鏡頭參數:部分外接/USB 鏡頭沒有 facingMode 資訊,寫死 'user' 可能導致 OverconstrainedError
@@ -65,11 +65,12 @@ async function enableCamera(){
     A.lastFace = YY.now();
     detTimer = setInterval(detect, 450);
     showPreview(stream);
-    YY.flash('👀 眼神感應啟動!看著牠、或轉頭走開,牠都會知道', 3600);
+    YY.setMode('focus');
+    YY.flash('🎯 Focus Mode 啟動!看著牠、或轉頭走開,牠都會知道', 3600);
     YY.sfx.ding();
   }catch(e){
     A.camera = 'denied';
-    console.error('[眼神感應] 啟動失敗:', e);
+    console.error('[Focus Mode] 啟動失敗:', e);
     let msg = '拿不到鏡頭權限,改用游標感應(游標一陣子沒動=你不在看)';
     if(e && e.name === 'NotAllowedError') msg = '瀏覽器封鎖了鏡頭權限(可能之前按過「封鎖」),改用游標感應。要重開請點網址列左邊的鎖頭圖示調整權限';
     else if(e && e.name === 'NotFoundError') msg = '找不到鏡頭裝置,改用游標感應';
@@ -102,7 +103,8 @@ function disableCamera(){
   if(video && video.srcObject) video.srcObject.getTracks().forEach(tr => tr.stop());
   video = null; A.camera = 'off';
   hidePreview();
-  YY.flash('眼神感應已關閉,改用游標感應', 2600);
+  YY.setMode('interact');
+  YY.flash('Focus Mode 已關閉,改用游標感應', 2600);
   renderEyeBtn();
 }
 
@@ -137,7 +139,7 @@ YY.updateAttention = function(t){
 /* ---------- 介面 ---------- */
 function renderEyeBtn(){
   const b = $('#btnEye'); if(!b) return;
-  b.textContent = { off:'👀 眼神感應', starting:'👀 啟動中…', on:'👀 感應中', denied:'👀 眼神感應' }[YY.attention.camera];
+  b.textContent = { off:'🎯 Focus Mode', starting:'🎯 啟動中…', on:'🎯 專注中', denied:'🎯 Focus Mode' }[YY.attention.camera];
   b.classList.toggle('live', YY.attention.camera === 'on');
 }
 function renderStatus(){

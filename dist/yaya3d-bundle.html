@@ -56,6 +56,34 @@ header p{margin-top:8px; font-size:13px; color:var(--ink-soft); font-weight:700;
   transition:opacity .25s, transform .25s; max-width:86vw; text-align:center;}
 #toast.on{opacity:1; transform:translateX(-50%) translateY(0);}
 
+/* ---------- mode label / focus streak (in HUD) ---------- */
+#modeLabel{margin-top:6px; font-size:11.5px; font-weight:800; color:var(--leaf); letter-spacing:.04em; display:none;}
+#modeLabel.on{display:block;}
+#focusStreak{margin-top:3px; font-size:12px; font-weight:800; color:var(--ink); letter-spacing:.03em; display:none;}
+#focusStreak.on{display:block;}
+
+/* ---------- mode switcher bar ---------- */
+#modeBar{position:fixed; top:18px; left:50%; transform:translateX(-50%);
+  display:flex; gap:8px; z-index:10;}
+#modeBar .modeBtn{
+  font-family:inherit; font-weight:800; font-size:13px; letter-spacing:.04em;
+  color:var(--ink); background:var(--card); border:2.5px solid var(--ink);
+  border-radius:999px; padding:7px 14px; cursor:pointer;
+  box-shadow:0 3px 0 rgba(44,64,52,.2); transition:transform .08s, opacity .2s;}
+#modeBar .modeBtn:active{transform:translateY(2px); box-shadow:none;}
+#modeBar .modeBtn.active{background:var(--leaf); color:#FFF;}
+#modeBar .modeBtn.locked{opacity:.4; cursor:not-allowed; filter:grayscale(.5);}
+#modeBar .modeBtn.locked:active{transform:none; box-shadow:0 3px 0 rgba(44,64,52,.2);}
+
+/* Focus Mode 進行中時,互動模式相關功能按鈕鎖起來 */
+#bar button.modeLocked{opacity:.35; cursor:not-allowed; filter:grayscale(.6);}
+#bar button.modeLocked:active{transform:none; box-shadow:0 4px 0 rgba(44,64,52,.22);}
+
+@media (max-width:560px){
+  #modeBar{top:auto; bottom:150px;}
+  #modeBar .modeBtn{font-size:11.5px; padding:6px 11px;}
+}
+
 /* ---------- bottom bar ---------- */
 #bar{position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
   display:flex; gap:10px; z-index:10; flex-wrap:wrap; justify-content:center; padding:0 12px;}
@@ -148,17 +176,24 @@ header p{margin-top:8px; font-size:13px; color:var(--ink-soft); font-weight:700;
 
 <div id="hud">
   <div id="who"><span id="whoName">芽芽</span><div id="trustBar"><i id="trustFill"></i></div>
-  <div id="watchState"></div></div>
+  <div id="watchState"></div>
+  <div id="modeLabel"></div>
+  <div id="focusStreak"></div></div>
 </div>
 
 <div id="toast"></div>
+
+<nav id="modeBar">
+  <button id="btnModeInteract" class="modeBtn">🎮 互動模式</button>
+  <button id="btnModeExplore" class="modeBtn">🌍 探索世界</button>
+</nav>
 
 <nav id="bar">
   <button id="btnDraw">🥚 抽扭蛋</button>
   <button id="btnWardrobe">👒 衣櫃</button>
   <button id="btnFamily">🏠 家族</button>
   <button id="btnBerry">🫐 餵莓果</button>
-  <button id="btnEye">👀 眼神感應</button>
+  <button id="btnEye">🎯 Focus Mode</button>
 </nav>
 
 <aside id="wardrobe" class="panel">
@@ -238,7 +273,45 @@ YY.bumpTrust = function(n){
     YY.flash(`${_curName()}現在超級黏你,好想一直待在你身邊 💕`, 3800);
 };
 
-/* ---------- 存檔 ---------- */
+/* ---------- 模式(Focus Mode / 互動模式 / 探索世界)----------
+   三種模式互斥:Focus Mode 開啟時不能切去互動或探索,
+   要先關閉 Focus Mode(眼神感應)才能換模式。
+   探索世界目前尚未開發,先當作預留位置。 */
+YY.MODES = ['interact', 'explore', 'focus'];
+YY.mode = 'interact';
+YY.MODE_LABEL = { interact:'🎮 互動模式', explore:'🌍 探索世界', focus:'🎯 Focus Mode 進行中' };
+YY.setMode = function(m){
+  if(YY.mode === m) return;
+  const prev = YY.mode;
+  YY.mode = m;
+  if(YY.onModeChange) YY.onModeChange(m, prev);
+};
+/* 目前能不能切去某個模式 */
+YY.canEnterMode = function(m){
+  if(m === YY.mode) return true;
+  if(YY.mode === 'focus') return false;   // Focus Mode 中,要先關閉才能換模式
+  if(m === 'explore') return false;       // 探索世界:尚未開發
+  return true;
+};
+
+/* ---------- 專注度計時(給獎勵機制/異種解鎖之後用的地基) ----------
+   連續看著螢幕的秒數會累積成 streakSec;
+   短暫移開(容錯時間內)不會讓 streak 歸零,只有離開夠久才重置。 */
+YY.FOCUS_GRACE_MS = 4000;   // 短暫移開的容錯時間
+YY.focus = { streakSec:0, totalSec:0, graceUntil:0 };
+YY.updateFocusStreak = function(t, dt){
+  const F = YY.focus;
+  if(YY.mode !== 'focus'){ F.streakSec = 0; return; }
+  if(YY.attention.watching){
+    F.streakSec += dt; F.totalSec += dt;
+    F.graceUntil = t + YY.FOCUS_GRACE_MS;
+  } else if(t > F.graceUntil){
+    F.streakSec = 0;   // 移開太久了,重新計時
+  }
+  /* 移開但還在容錯時間內 → streak 暫停、不歸零 */
+};
+
+
 YY.save = function(){
   try{
     localStorage.setItem('yy3d', JSON.stringify({
@@ -890,7 +963,7 @@ async function enableCamera(){
     return;
   }
   A.camera = 'starting'; renderEyeBtn();
-  YY.flash('正在啟動眼神感應…(影像只在你的裝置上分析,不會上傳)', 3400);
+  YY.flash('正在啟動 Focus Mode…(影像只在你的裝置上分析,不會上傳)', 3400);
   try{
     await loadTinyFaceDetectorOffline();
     // 放寬鏡頭參數:部分外接/USB 鏡頭沒有 facingMode 資訊,寫死 'user' 可能導致 OverconstrainedError
@@ -903,11 +976,12 @@ async function enableCamera(){
     A.lastFace = YY.now();
     detTimer = setInterval(detect, 450);
     showPreview(stream);
-    YY.flash('👀 眼神感應啟動!看著牠、或轉頭走開,牠都會知道', 3600);
+    YY.setMode('focus');
+    YY.flash('🎯 Focus Mode 啟動!看著牠、或轉頭走開,牠都會知道', 3600);
     YY.sfx.ding();
   }catch(e){
     A.camera = 'denied';
-    console.error('[眼神感應] 啟動失敗:', e);
+    console.error('[Focus Mode] 啟動失敗:', e);
     let msg = '拿不到鏡頭權限,改用游標感應(游標一陣子沒動=你不在看)';
     if(e && e.name === 'NotAllowedError') msg = '瀏覽器封鎖了鏡頭權限(可能之前按過「封鎖」),改用游標感應。要重開請點網址列左邊的鎖頭圖示調整權限';
     else if(e && e.name === 'NotFoundError') msg = '找不到鏡頭裝置,改用游標感應';
@@ -940,7 +1014,8 @@ function disableCamera(){
   if(video && video.srcObject) video.srcObject.getTracks().forEach(tr => tr.stop());
   video = null; A.camera = 'off';
   hidePreview();
-  YY.flash('眼神感應已關閉,改用游標感應', 2600);
+  YY.setMode('interact');
+  YY.flash('Focus Mode 已關閉,改用游標感應', 2600);
   renderEyeBtn();
 }
 
@@ -975,7 +1050,7 @@ YY.updateAttention = function(t){
 /* ---------- 介面 ---------- */
 function renderEyeBtn(){
   const b = $('#btnEye'); if(!b) return;
-  b.textContent = { off:'👀 眼神感應', starting:'👀 啟動中…', on:'👀 感應中', denied:'👀 眼神感應' }[YY.attention.camera];
+  b.textContent = { off:'🎯 Focus Mode', starting:'🎯 啟動中…', on:'🎯 專注中', denied:'🎯 Focus Mode' }[YY.attention.camera];
   b.classList.toggle('live', YY.attention.camera === 'on');
 }
 function renderStatus(){
@@ -2068,7 +2143,19 @@ YY.onAttentionChange = function(watching, t){
   } else {
     cre.hiding = false;
     shyNoted = false;
-    nextActAt = t + YY.rand(2500, 5000);   // 確認你真的走了才開始玩
+    /* 依好感度決定「你走開了」這一刻的反應和之後多快開始自己玩 */
+    const tier = YY.trustTier();
+    let delay;
+    if(tier === 'shy'){
+      delay = YY.rand(1200, 2400);          // 怕生:你一走馬上鬆一口氣
+      if(Math.random() < .5) YY.flash(`${cre.def.n}鬆了一口氣:「呼……終於不看我了」`, 2600);
+    } else if(tier === 'close'){
+      delay = YY.rand(3200, 6000);          // 超黏你:捨不得,慢一點才開始自己玩
+      if(Math.random() < .4) YY.flash(`${cre.def.n}:「妳要去忙了嗎?那我在旁邊等妳~」`, 2800);
+    } else {
+      delay = YY.rand(2500, 5000);          // 普通:一如往常
+    }
+    nextActAt = t + delay;
   }
 };
 
@@ -2180,16 +2267,36 @@ YY.updateSelfPlay = function(t, dt){
     return;
   }
   if(t > nextActAt && !YY.capsule && !cre.goal){
-    const menu = ['ball', 'spin', 'wander', 'wander'];
+    startAct(pickIdleKind(), t);
+  }
+};
+
+/* 你不在看時,牠自己玩什麼——依好感度分級,行為明顯不同 */
+function pickIdleKind(){
+  const tier = YY.trustTier();
+  let menu;
+  if(tier === 'shy'){
+    /* 還怕生:多躲多睡,不太敢在空曠地方玩 */
+    menu = ['wander', 'wander', 'wander', 'nap', 'nap'];
+    if(YY.box) menu.push('box', 'box');
+  } else if(tier === 'close'){
+    /* 超黏你:活潑愛玩,還會不時偷瞄你在不在座位上 */
+    menu = ['ball', 'ball', 'spin', 'wander', 'glance', 'glance'];
+    if(YY.blocks)  menu.push('blocks', 'blocks');
+    if(YY.cushion) menu.push('cushion', 'cushion');
+    if(YY.butterflyPos && YY.butterflyPos.on) menu.push('chase', 'chase');
+    if(Math.random() < .12) menu.push('nap');
+  } else {
+    /* 普通熟悉度:原本那套均衡菜單 */
+    menu = ['ball', 'spin', 'wander', 'wander'];
     if(YY.blocks)  menu.push('blocks', 'blocks');
     if(YY.cushion) menu.push('cushion');
     if(YY.box)     menu.push('box');
     if(YY.butterflyPos && YY.butterflyPos.on) menu.push('chase', 'chase');
     if(Math.random() < .3) menu.push('nap');
-    const kind = menu[Math.floor(Math.random() * menu.length)];
-    startAct(kind, t);
   }
-};
+  return menu[Math.floor(Math.random() * menu.length)];
+}
 
 function startAct(kind, t){
   const cre = YY.cre;
@@ -2219,6 +2326,10 @@ function startAct(kind, t){
     cre.tx = YY.box.x; cre.tz = YY.box.z + .8;
     act.in = false; act.next = 0;
     act.until = t + 11000;
+  } else if(kind === 'glance'){            // 偷瞄一下你在不在座位上(超黏你限定)
+    cre.squash.rotation.x = -.18; YY.sfx.peep();
+    act.until = t + 1000;
+    setTimeout(() => { if(YY.cre) YY.cre.squash.rotation.x = 0; }, 850);
   } else { // wander
     cre.tx = YY.rand(-3, 3); cre.tz = YY.rand(-2, 2.6);
     act.until = t + YY.rand(4000, 8000);
@@ -2316,6 +2427,21 @@ const $ = s => document.querySelector(s);
 
 YY.load();
 YY.initWorld();
+
+/* ---------- 模式切換(互動 / 探索 / Focus Mode)——
+   guard 要在其他按鈕的 onclick 掛上去「之前」註冊,
+   這樣 Focus Mode 中才能真的攔下點擊,而不是被原本的處理器搶先執行 ---------- */
+const LOCKED_IN_FOCUS = ['#btnDraw', '#btnWardrobe', '#btnFamily', '#btnBerry'];
+LOCKED_IN_FOCUS.forEach(sel => {
+  const b = $(sel); if(!b) return;
+  b.addEventListener('click', e => {
+    if(YY.mode === 'focus'){
+      e.stopImmediatePropagation(); e.preventDefault();
+      YY.flash('Focus Mode 中無法使用,先關閉才能互動', 2400);
+    }
+  }, true);
+});
+
 YY.switchCharacter(YY.currentChar, false);
 YY.cre.tx = 0; YY.cre.tz = 1.2; YY.cre.x = 0; YY.cre.z = 1.2;
 YY.initPanels();
@@ -2323,6 +2449,37 @@ YY.initBerry();
 YY.initToyBall();
 YY.initVision();
 $('#trustFill').style.width = YY.trust + '%';
+
+function renderModeUI(){
+  const interactBtn = $('#btnModeInteract'), exploreBtn = $('#btnModeExplore');
+  interactBtn.classList.toggle('active', YY.mode === 'interact');
+  interactBtn.classList.toggle('locked', !YY.canEnterMode('interact'));
+  exploreBtn.classList.toggle('active', YY.mode === 'explore');
+  exploreBtn.classList.toggle('locked', true);   // 探索世界尚未開發,先鎖起來
+
+  const modeLabel = $('#modeLabel');
+  if(YY.mode === 'focus'){
+    modeLabel.textContent = YY.MODE_LABEL.focus;
+    modeLabel.classList.add('on');
+  } else {
+    modeLabel.classList.remove('on');
+  }
+  LOCKED_IN_FOCUS.forEach(sel => {
+    const b = $(sel); if(b) b.classList.toggle('modeLocked', YY.mode === 'focus');
+  });
+}
+YY.onModeChange = function(m){
+  renderModeUI();
+  if(m === 'focus') YY.flash('進入 Focus Mode!互動模式的功能先鎖起來,專心感受牠陪你的樣子', 3400);
+};
+$('#btnModeInteract').onclick = () => {
+  if(!YY.canEnterMode('interact')){ YY.flash('Focus Mode 進行中,請先關閉才能切回互動模式', 2600); return; }
+  YY.setMode('interact');
+};
+$('#btnModeExplore').onclick = () => {
+  YY.flash('🌍 探索世界正在開發中,敬請期待!', 2600);
+};
+renderModeUI();
 
 /* ---------- 輸入 ---------- */
 YY.mouse = { x:0, y:0, lastMove: YY.now(), inside:true, prevOk:false };
@@ -2385,6 +2542,7 @@ dom.addEventListener('pointerup', e => {
   if(!dragging) return;
   dragging = false;
   if(moved < 8){                    // 視為「點一下」
+    if(YY.mode === 'focus') return;   // Focus Mode 中不觸發互動模式的點擊行為
     setPtr(e);
     const { creHit, macHit } = hitTest();
     if(creHit) pet();
@@ -2438,11 +2596,24 @@ function updateWander(t){
 
 /* ---------- 主迴圈 ---------- */
 let last = YY.now();
+let lastStreakLabel = -1;
+function renderFocusStreak(){
+  const el = $('#focusStreak'); if(!el) return;
+  if(YY.mode !== 'focus'){ el.classList.remove('on'); lastStreakLabel = -1; return; }
+  const s = Math.floor(YY.focus.streakSec);
+  if(s === lastStreakLabel) return;
+  lastStreakLabel = s;
+  const mm = Math.floor(s / 60), ss = s % 60;
+  el.textContent = `🎯 已專注 ${mm}:${String(ss).padStart(2, '0')}`;
+  el.classList.add('on');
+}
 function loop(){
   const t = YY.now();
   const dt = Math.min(.05, (t - last) / 1000); last = t;
 
   YY.updateAttention(t);
+  YY.updateFocusStreak(t, dt);
+  renderFocusStreak();
   YY.updateCreature(YY.cre, dt, t);
   YY.updateSelfPlay(t, dt);
   YY.updateCapsule(dt);
@@ -2468,7 +2639,7 @@ loop();
 setTimeout(() => YY.flash(`${YY.FAMILY[YY.currentChar].n}:「${YY.FAMILY[YY.currentChar].greet}」`, 3200), 900);
 setTimeout(() => YY.flash('剛認識時牠會怕你——你一看,牠就躲起來偷看。多摸摸、餵莓果養好感度,牠會慢慢願意靠近你', 5200), 4600);
 setTimeout(() => YY.flash(`一共有 ${YY.ITEM_COUNT} 件扭蛋飾品可以收集!摸摸和餵莓果有機率掉扭蛋券`, 4200), 10200);
-setTimeout(() => YY.flash('按「👀 眼神感應」開鏡頭——牠會知道你有沒有在看牠!沒人看的時候牠會自己去撞積木、撲豆袋、鑽紙箱', 5200), 15200);
+setTimeout(() => YY.flash('按「🎯 Focus Mode」開鏡頭——牠會知道你有沒有在看牠!沒人看的時候牠會自己去撞積木、撲豆袋、鑽紙箱', 5200), 15200);
 })();
 
 </script>

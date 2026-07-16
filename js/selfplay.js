@@ -63,7 +63,19 @@ YY.onAttentionChange = function(watching, t){
   } else {
     cre.hiding = false;
     shyNoted = false;
-    nextActAt = t + YY.rand(2500, 5000);   // 確認你真的走了才開始玩
+    /* 依好感度決定「你走開了」這一刻的反應和之後多快開始自己玩 */
+    const tier = YY.trustTier();
+    let delay;
+    if(tier === 'shy'){
+      delay = YY.rand(1200, 2400);          // 怕生:你一走馬上鬆一口氣
+      if(Math.random() < .5) YY.flash(`${cre.def.n}鬆了一口氣:「呼……終於不看我了」`, 2600);
+    } else if(tier === 'close'){
+      delay = YY.rand(3200, 6000);          // 超黏你:捨不得,慢一點才開始自己玩
+      if(Math.random() < .4) YY.flash(`${cre.def.n}:「妳要去忙了嗎?那我在旁邊等妳~」`, 2800);
+    } else {
+      delay = YY.rand(2500, 5000);          // 普通:一如往常
+    }
+    nextActAt = t + delay;
   }
 };
 
@@ -175,16 +187,36 @@ YY.updateSelfPlay = function(t, dt){
     return;
   }
   if(t > nextActAt && !YY.capsule && !cre.goal){
-    const menu = ['ball', 'spin', 'wander', 'wander'];
+    startAct(pickIdleKind(), t);
+  }
+};
+
+/* 你不在看時,牠自己玩什麼——依好感度分級,行為明顯不同 */
+function pickIdleKind(){
+  const tier = YY.trustTier();
+  let menu;
+  if(tier === 'shy'){
+    /* 還怕生:多躲多睡,不太敢在空曠地方玩 */
+    menu = ['wander', 'wander', 'wander', 'nap', 'nap'];
+    if(YY.box) menu.push('box', 'box');
+  } else if(tier === 'close'){
+    /* 超黏你:活潑愛玩,還會不時偷瞄你在不在座位上 */
+    menu = ['ball', 'ball', 'spin', 'wander', 'glance', 'glance'];
+    if(YY.blocks)  menu.push('blocks', 'blocks');
+    if(YY.cushion) menu.push('cushion', 'cushion');
+    if(YY.butterflyPos && YY.butterflyPos.on) menu.push('chase', 'chase');
+    if(Math.random() < .12) menu.push('nap');
+  } else {
+    /* 普通熟悉度:原本那套均衡菜單 */
+    menu = ['ball', 'spin', 'wander', 'wander'];
     if(YY.blocks)  menu.push('blocks', 'blocks');
     if(YY.cushion) menu.push('cushion');
     if(YY.box)     menu.push('box');
     if(YY.butterflyPos && YY.butterflyPos.on) menu.push('chase', 'chase');
     if(Math.random() < .3) menu.push('nap');
-    const kind = menu[Math.floor(Math.random() * menu.length)];
-    startAct(kind, t);
   }
-};
+  return menu[Math.floor(Math.random() * menu.length)];
+}
 
 function startAct(kind, t){
   const cre = YY.cre;
@@ -214,6 +246,10 @@ function startAct(kind, t){
     cre.tx = YY.box.x; cre.tz = YY.box.z + .8;
     act.in = false; act.next = 0;
     act.until = t + 11000;
+  } else if(kind === 'glance'){            // 偷瞄一下你在不在座位上(超黏你限定)
+    cre.squash.rotation.x = -.18; YY.sfx.peep();
+    act.until = t + 1000;
+    setTimeout(() => { if(YY.cre) YY.cre.squash.rotation.x = 0; }, 850);
   } else { // wander
     cre.tx = YY.rand(-3, 3); cre.tz = YY.rand(-2, 2.6);
     act.until = t + YY.rand(4000, 8000);

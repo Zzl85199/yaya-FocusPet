@@ -8,6 +8,21 @@ const $ = s => document.querySelector(s);
 
 YY.load();
 YY.initWorld();
+
+/* ---------- 模式切換(互動 / 探索 / Focus Mode)——
+   guard 要在其他按鈕的 onclick 掛上去「之前」註冊,
+   這樣 Focus Mode 中才能真的攔下點擊,而不是被原本的處理器搶先執行 ---------- */
+const LOCKED_IN_FOCUS = ['#btnDraw', '#btnWardrobe', '#btnFamily', '#btnBerry'];
+LOCKED_IN_FOCUS.forEach(sel => {
+  const b = $(sel); if(!b) return;
+  b.addEventListener('click', e => {
+    if(YY.mode === 'focus'){
+      e.stopImmediatePropagation(); e.preventDefault();
+      YY.flash('Focus Mode 中無法使用,先關閉才能互動', 2400);
+    }
+  }, true);
+});
+
 YY.switchCharacter(YY.currentChar, false);
 YY.cre.tx = 0; YY.cre.tz = 1.2; YY.cre.x = 0; YY.cre.z = 1.2;
 YY.initPanels();
@@ -15,6 +30,37 @@ YY.initBerry();
 YY.initToyBall();
 YY.initVision();
 $('#trustFill').style.width = YY.trust + '%';
+
+function renderModeUI(){
+  const interactBtn = $('#btnModeInteract'), exploreBtn = $('#btnModeExplore');
+  interactBtn.classList.toggle('active', YY.mode === 'interact');
+  interactBtn.classList.toggle('locked', !YY.canEnterMode('interact'));
+  exploreBtn.classList.toggle('active', YY.mode === 'explore');
+  exploreBtn.classList.toggle('locked', true);   // 探索世界尚未開發,先鎖起來
+
+  const modeLabel = $('#modeLabel');
+  if(YY.mode === 'focus'){
+    modeLabel.textContent = YY.MODE_LABEL.focus;
+    modeLabel.classList.add('on');
+  } else {
+    modeLabel.classList.remove('on');
+  }
+  LOCKED_IN_FOCUS.forEach(sel => {
+    const b = $(sel); if(b) b.classList.toggle('modeLocked', YY.mode === 'focus');
+  });
+}
+YY.onModeChange = function(m){
+  renderModeUI();
+  if(m === 'focus') YY.flash('進入 Focus Mode!互動模式的功能先鎖起來,專心感受牠陪你的樣子', 3400);
+};
+$('#btnModeInteract').onclick = () => {
+  if(!YY.canEnterMode('interact')){ YY.flash('Focus Mode 進行中,請先關閉才能切回互動模式', 2600); return; }
+  YY.setMode('interact');
+};
+$('#btnModeExplore').onclick = () => {
+  YY.flash('🌍 探索世界正在開發中,敬請期待!', 2600);
+};
+renderModeUI();
 
 /* ---------- 輸入 ---------- */
 YY.mouse = { x:0, y:0, lastMove: YY.now(), inside:true, prevOk:false };
@@ -77,6 +123,7 @@ dom.addEventListener('pointerup', e => {
   if(!dragging) return;
   dragging = false;
   if(moved < 8){                    // 視為「點一下」
+    if(YY.mode === 'focus') return;   // Focus Mode 中不觸發互動模式的點擊行為
     setPtr(e);
     const { creHit, macHit } = hitTest();
     if(creHit) pet();
@@ -130,11 +177,24 @@ function updateWander(t){
 
 /* ---------- 主迴圈 ---------- */
 let last = YY.now();
+let lastStreakLabel = -1;
+function renderFocusStreak(){
+  const el = $('#focusStreak'); if(!el) return;
+  if(YY.mode !== 'focus'){ el.classList.remove('on'); lastStreakLabel = -1; return; }
+  const s = Math.floor(YY.focus.streakSec);
+  if(s === lastStreakLabel) return;
+  lastStreakLabel = s;
+  const mm = Math.floor(s / 60), ss = s % 60;
+  el.textContent = `🎯 已專注 ${mm}:${String(ss).padStart(2, '0')}`;
+  el.classList.add('on');
+}
 function loop(){
   const t = YY.now();
   const dt = Math.min(.05, (t - last) / 1000); last = t;
 
   YY.updateAttention(t);
+  YY.updateFocusStreak(t, dt);
+  renderFocusStreak();
   YY.updateCreature(YY.cre, dt, t);
   YY.updateSelfPlay(t, dt);
   YY.updateCapsule(dt);
@@ -160,5 +220,5 @@ loop();
 setTimeout(() => YY.flash(`${YY.FAMILY[YY.currentChar].n}:「${YY.FAMILY[YY.currentChar].greet}」`, 3200), 900);
 setTimeout(() => YY.flash('剛認識時牠會怕你——你一看,牠就躲起來偷看。多摸摸、餵莓果養好感度,牠會慢慢願意靠近你', 5200), 4600);
 setTimeout(() => YY.flash(`一共有 ${YY.ITEM_COUNT} 件扭蛋飾品可以收集!摸摸和餵莓果有機率掉扭蛋券`, 4200), 10200);
-setTimeout(() => YY.flash('按「👀 眼神感應」開鏡頭——牠會知道你有沒有在看牠!沒人看的時候牠會自己去撞積木、撲豆袋、鑽紙箱', 5200), 15200);
+setTimeout(() => YY.flash('按「🎯 Focus Mode」開鏡頭——牠會知道你有沒有在看牠!沒人看的時候牠會自己去撞積木、撲豆袋、鑽紙箱', 5200), 15200);
 })();
