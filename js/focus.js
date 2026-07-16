@@ -7,8 +7,11 @@
    ============================================================ */
 (function(){
 
-/* ---------- #4 異種牙寶資料 ---------- */
-YY.VARIANT_ORDER = ['feiya', 'xingya'];
+/* ---------- #4 異種牙寶資料(共 15 種,飛行 / 閃亮 / 光暈 / 樸素風格都有) ---------- */
+YY.VARIANT_ORDER = [
+  'feiya', 'xingya', 'leiya', 'yunya', 'caiya', 'jinya', 'mengya',
+  'bingya', 'huoya', 'yeya', 'haiya', 'yingya', 'shaya', 'senya', 'muya',
+];
 Object.assign(YY.FAMILY, {
   feiya: {
     n:'飛飛芽', rel:'會飛的異種', body:0xAEE3F5, blush:0x8FCBE6,
@@ -19,6 +22,68 @@ Object.assign(YY.FAMILY, {
     n:'星星芽', rel:'閃閃發光的異種', body:0x9B7FD4, blush:0xE0B15E,
     size:.9, sprout:'flower', greet:'✨你的專注,把我引來了……',
     variant:'sparkle',
+  },
+  leiya: {
+    n:'雷雷芽', rel:'帶靜電的異種', body:0xF2E24E, blush:0xE0B15E,
+    size:.84, sprout:'single', greet:'噼哩啪啦!專注的感覺讓我充滿電!',
+    variant:'flying',
+  },
+  yunya: {
+    n:'雲雲芽', rel:'軟綿綿的異種', body:0xF5F7F2, blush:0xCFE0E8,
+    size:.95, sprout:'flower', greet:'我是從專注的天空飄下來的雲朵唷~',
+    variant:'flying',
+  },
+  caiya: {
+    n:'彩彩芽', rel:'七彩斑斕的異種', body:0xF2A0B5, blush:0x9B7FD4,
+    size:.9, sprout:'flower', greet:'你的專注讓我閃出好多顏色!',
+    variant:'sparkle',
+  },
+  jinya: {
+    n:'金金芽', rel:'金光閃閃的異種', body:0xF2C14E, blush:0xE0A93A,
+    size:.92, sprout:'bun', greet:'叮~專注的價值,黃金也比不上。',
+    variant:'sparkle',
+  },
+  mengya: {
+    n:'夢夢芽', rel:'活在夢裡的異種', body:0xD9C7F0, blush:0xF2A0B5,
+    size:.88, sprout:'berry', greet:'噓……你的專注,把我從夢裡叫醒了。',
+    variant:'sparkle',
+  },
+  bingya: {
+    n:'冰冰芽', rel:'冰冰涼涼的異種', body:0xCDEFF5, blush:0x8FCBE6,
+    size:.9, sprout:'bun', greet:'你好冷靜、好專注,跟我很像呢。',
+    variant:'glow', glowColor:0xBEEFFA,
+  },
+  huoya: {
+    n:'火火芽', rel:'熱情如火的異種', body:0xE4573D, blush:0xF2984A,
+    size:.94, sprout:'triple', greet:'你的專注力,把我燃燒起來了!',
+    variant:'glow', glowColor:0xFFAE6B,
+  },
+  yeya: {
+    n:'夜夜芽', rel:'愛熬夜的異種', body:0x6B5B95, blush:0x9B7FD4,
+    size:.9, sprout:'twin', greet:'深夜的專注時光,只有我懂你。',
+    variant:'glow', glowColor:0xB79BE8,
+  },
+  haiya: {
+    n:'海海芽', rel:'來自遠方的異種', body:0x5A9BD8, blush:0x8FCBE6,
+    size:.92, sprout:'berry', greet:'像海浪一樣,你的專注一波接著一波。',
+    variant:'glow', glowColor:0x9AD8E8,
+  },
+  yingya: {
+    n:'螢螢芽', rel:'會發光的異種', body:0xD8E85A, blush:0xB8D84A,
+    size:.8, sprout:'single', greet:'黑暗中,你的專注就是我的光。',
+    variant:'glow', glowColor:0xE8F58A,
+  },
+  shaya: {
+    n:'沙沙芽', rel:'來自沙漠的異種', body:0xE0C088, blush:0xC98A5A,
+    size:.9, sprout:'stache', greet:'一步一步,你的專注像沙漠裡的旅人。',
+  },
+  senya: {
+    n:'森森芽', rel:'住在深林的異種', body:0x3F6B3A, blush:0x6FA25E,
+    size:1.05, sprout:'triple', greet:'歡迎來到專注的森林深處。',
+  },
+  muya: {
+    n:'木木芽', rel:'安安靜靜的異種', body:0x8A6A44, blush:0xC98A5A,
+    size:.96, sprout:'single', greet:'像一棵樹一樣,靜靜陪你專注。',
   },
 });
 
@@ -114,7 +179,7 @@ YY.updateFocusExtras = function(t, dt){
     rollReward();
     F.nextRewardAt = F.streakSec + YY.rand(90, 180);
   }
-  if(!YY.attention.watching) return;   // 小功能只在你看著螢幕、牠也在陪你的時候出現
+  if(!YY.attention.trueGaze) return;   // 小功能只在你眼睛真的看著螢幕時才出現
   if(t / 1000 > nextFlavorAt){
     playFlavor();
     nextFlavorAt = t / 1000 + YY.rand(35, 70);

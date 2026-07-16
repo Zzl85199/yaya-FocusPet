@@ -8,10 +8,13 @@
 const $ = s => document.querySelector(s);
 
 YY.attention = {
-  watching: true,       // 你現在有沒有在看牠
+  watching: true,       // 你現在有沒有在看牠(臉在鏡頭前 / 游標有動)
+  trueGaze: true,       // 眼睛有沒有真的睜開看螢幕(Focus Mode 專注判定用,比 watching 更嚴格)
   since: 0,             // 這個狀態持續多久了
   camera: 'off',        // off | starting | on | denied
   lastFace: 0,
+  lastGazeOk: 0,
+  landmarkReady: false,
 };
 
 let video = null, detTimer = 0, prevWatch = true;
@@ -25,11 +28,11 @@ function b64ToBuffer(b64){
   for(let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return bytes.buffer;
 }
-async function loadTinyFaceDetectorOffline(){
-  if(faceapi.nets.tinyFaceDetector.isLoaded) return;
-  const W = YY.FACE_WEIGHTS || {};
-  const manifestB64 = W['tiny_face_detector_model-weights_manifest.json'];
-  if(!manifestB64) throw new Error('缺少內嵌的臉部模型 manifest');
+async function loadNetOffline(net, weightsObj, manifestKey){
+  if(net.isLoaded) return;
+  const W = weightsObj || {};
+  const manifestB64 = W[manifestKey];
+  if(!manifestB64) throw new Error('缺少內嵌的模型 manifest:' + manifestKey);
   const manifest = JSON.parse(atob(manifestB64));
   const loadWeights = faceapi.tf.io.weightsLoaderFactory(async (paths) => {
     return paths.map(p => {
@@ -40,7 +43,17 @@ async function loadTinyFaceDetectorOffline(){
     });
   });
   const weightMap = await loadWeights(manifest, '');
-  faceapi.nets.tinyFaceDetector.loadFromWeightMap(weightMap);
+  net.loadFromWeightMap(weightMap);
+}
+async function loadTinyFaceDetectorOffline(){
+  return loadNetOffline(faceapi.nets.tinyFaceDetector, YY.FACE_WEIGHTS,
+    'tiny_face_detector_model-weights_manifest.json');
+}
+/* 眼神真的有沒有看螢幕(而不是只有臉在鏡頭前),要靠 68 點臉部特徵點:
+   算眼睛開合(EAR)+ 鼻尖是不是落在兩眼中間(沒有把頭轉開)才算數 */
+async function loadFaceLandmarkOffline(){
+  return loadNetOffline(faceapi.nets.faceLandmark68TinyNet, YY.LANDMARK_WEIGHTS,
+    'face_landmark_68_tiny_model-weights_manifest.json');
 }
 
 /* ---------- 開關鏡頭 ---------- */
@@ -55,6 +68,13 @@ async function enableCamera(){
   YY.flash('正在啟動 Focus Mode…(影像只在你的裝置上分析,不會上傳)', 3400);
   try{
     await loadTinyFaceDetectorOffline();
+    try{
+      await loadFaceLandmarkOffline();
+      YY.attention.landmarkReady = true;
+    }catch(le){
+      YY.attention.landmarkReady = false;
+      console.warn('[Focus Mode] 臉部特徵點模型載入失敗,眼神判定退回「有臉就算」:', le);
+    }
     // 放寬鏡頭參數:部分外接/USB 鏡頭沒有 facingMode 資訊,寫死 'user' 可能導致 OverconstrainedError
     const stream = await navigator.mediaDevices.getUserMedia({
       video: { width:{ideal:320}, height:{ideal:240}, facingMode:{ideal:'user'} }, audio:false });
@@ -109,23 +129,51 @@ function disableCamera(){
 }
 
 const detOpts = () => new faceapi.TinyFaceDetectorOptions({ inputSize:160, scoreThreshold:.4 });
+
+/* Eye Aspect Ratio:眼睛睜開程度,數值越小代表眼睛越瞇/閉 */
+function eyeAspectRatio(eye){
+  const d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  return (d(eye[1], eye[5]) + d(eye[2], eye[4])) / (2 * d(eye[0], eye[3]));
+}
 async function detect(){
   if(!video || video.paused) return;
   try{
-    const r = await faceapi.detectSingleFace(video, detOpts());
-    if(r) YY.attention.lastFace = YY.now();
+    const A = YY.attention;
+    if(A.landmarkReady){
+      const r = await faceapi.detectSingleFace(video, detOpts()).withFaceLandmarks(true);
+      if(r){
+        A.lastFace = YY.now();
+        const leftEye = r.landmarks.getLeftEye(), rightEye = r.landmarks.getRightEye();
+        const ear = (eyeAspectRatio(leftEye) + eyeAspectRatio(rightEye)) / 2;
+        const eyesOpen = ear > .16;
+
+        /* 粗略估計有沒有把頭轉開:鼻尖應該落在兩眼中點附近 */
+        const nose = r.landmarks.getNose();
+        const noseTip = nose[nose.length - 1];
+        const eyeMidX = (leftEye[0].x + rightEye[3].x) / 2;
+        const eyeSpan = Math.abs(rightEye[3].x - leftEye[0].x) || 1;
+        const facingForward = Math.abs(noseTip.x - eyeMidX) / eyeSpan < .34;
+
+        if(eyesOpen && facingForward) A.lastGazeOk = YY.now();
+      }
+    } else {
+      const r = await faceapi.detectSingleFace(video, detOpts());
+      if(r){ A.lastFace = YY.now(); A.lastGazeOk = YY.now(); }   // 沒有特徵點模型,退回「有臉就算」
+    }
   }catch(e){ /* 單次失敗不理它 */ }
 }
 
-/* ---------- 每幀判斷:你在看嗎? ---------- */
+/* ---------- 每幀判斷:你在看嗎?(watching = 一般用途) / trueGaze(Focus Mode 專用,更嚴格) ---------- */
 YY.updateAttention = function(t){
   const A = YY.attention;
-  let w;
+  let w, gaze;
   if(A.camera === 'on'){
-    w = (t - A.lastFace) < 1700;           // 1.7 秒內有偵測到正臉
+    w = (t - A.lastFace) < 1700;              // 1.7 秒內有偵測到正臉(一般互動用)
+    gaze = (t - A.lastGazeOk) < 1700;          // 1.7 秒內眼睛真的睜開、朝前(Focus Mode 專注判定用)
   } else {
     const mo = YY.mouse;
     w = mo.inside && (t - mo.lastMove) < 7000;  // 游標感應
+    gaze = w;   // 沒有鏡頭時沒辦法判斷眼神,退回跟 watching 一致
   }
   if(w !== prevWatch){
     prevWatch = w;
@@ -134,6 +182,7 @@ YY.updateAttention = function(t){
     renderStatus();
   }
   A.watching = w;
+  A.trueGaze = gaze;
 };
 
 /* ---------- 介面 ---------- */

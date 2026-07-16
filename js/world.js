@@ -46,6 +46,7 @@ YY.initWorld = function(){
   floor.position.y = -.15;
   floor.receiveShadow = true;
   scene.add(floor);
+  YY.floor = floor;
 
   const rug = new THREE.Mesh(new THREE.CylinderGeometry(3.4, 3.4, .05, 40), mat(P.rug));
   rug.position.y = .03; rug.receiveShadow = true;

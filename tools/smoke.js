@@ -36,7 +36,7 @@ THREE.WebGLRenderer = function(){ return {
 global.THREE = THREE;
 global.AudioContext = undefined;
 
-for(const f of ['config.js','items.js','family.js','focus.js','vision.js','creature.js','world.js','gacha.js','events.js','selfplay.js','pip.js','main.js']){
+for(const f of ['config.js','items.js','family.js','focus.js','vision.js','creature.js','world.js','gacha.js','events.js','companion.js','explore.js','selfplay.js','pip.js','main.js']){
   const code = fs.readFileSync(path.join(root, 'js', f), 'utf8');
   try{ eval(code); }catch(e){ console.error('❌ 載入失敗:', f, e); process.exit(1); }
   console.log('✅ 載入', f);
@@ -50,7 +50,9 @@ const loopFrame = (ms) => { tick(ms);
   G.updateFocusExtras(t, ms/1000);
   G.updatePiP(t);
   G.updateCreature(G.cre, ms/1000, t);
+  G.updateCompanion(ms/1000, t);
   G.updateSelfPlay(t, ms/1000);
+  G.updateExplore(t, ms/1000);
   G.updateCapsule(ms/1000); G.updateParticles(ms/1000);
   G.updateButterfly(t, ms/1000); G.updateVisits(t);
 };
@@ -201,5 +203,28 @@ if(G.pipOn) throw new Error('setPiP(false) 沒有生效');
 console.log('✅ 子母視窗開關 + 渲染 OK');
 
 G.setMode('interact');   // 還原,避免影響後續(若有)
+
+// 17) 探索世界:切換模式、點地板走路、精靈生成、丟莓果誘捕
+G.setMode('explore');
+if(G.mode !== 'explore') throw new Error('setMode 沒有切到 explore');
+G.handleExploreTap(0, 0);    // 隨便點一下畫面中央(地板),測試 tap-to-walk 不噴錯
+for(let i = 0; i < 800 && !G.spiritGroup.children.length; i++) loopFrame(16);
+if(!G.spiritGroup.children.length) throw new Error('探索世界跑了 12+ 秒還沒生出任何精靈');
+console.log('✅ 探索世界:精靈生成 OK,場上', G.spiritGroup.children.length, '隻');
+
+// 強制選中第一隻精靈並丟莓果誘捕,跑到牠捕獲/逃跑為止
+const firstUid = G.spiritGroup.children[0].userData.uid;
+G.exploreTarget = firstUid;
+G.throwLureBerry();
+let resolved = false;
+for(let i = 0; i < 1200; i++){
+  const before = G.spiritGroup.children.length;
+  loopFrame(16);
+  if(G.spiritGroup.children.length !== before || !G.exploreTarget){ resolved = true; break; }
+}
+if(!resolved) throw new Error('丟莓果誘捕後,精靈一直沒有解析結果(既沒被抓也沒逃跑)');
+console.log('✅ 誘捕流程 OK(捕獲或逃跑其中一種結果都正常),精靈圖鑑', G.metSpirits.join(',') || '(尚無捕獲)');
+
+G.setMode('interact');
 
 console.log('\n🎉 全部煙霧測試通過!圖鑑總數:', G.ITEM_COUNT);

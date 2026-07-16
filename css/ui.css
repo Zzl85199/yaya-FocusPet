@@ -47,15 +47,16 @@ header p{margin-top:8px; font-size:13px; color:var(--ink-soft); font-weight:700;
 #focusStreak.on{display:block;}
 
 /* ---------- mode switcher bar ---------- */
-#modeBar{position:fixed; top:18px; left:50%; transform:translateX(-50%);
-  display:flex; gap:8px; z-index:10;}
+#modeBar{position:fixed; left:18px; bottom:20px; z-index:10;
+  display:flex; flex-direction:column; gap:8px;}
 #modeBar .modeBtn{
-  font-family:inherit; font-weight:800; font-size:13px; letter-spacing:.04em;
+  font-family:inherit; font-size:20px; line-height:1;
   color:var(--ink); background:var(--card); border:2.5px solid var(--ink);
-  border-radius:999px; padding:7px 14px; cursor:pointer;
-  box-shadow:0 3px 0 rgba(44,64,52,.2); transition:transform .08s, opacity .2s;}
+  border-radius:50%; width:46px; height:46px; cursor:pointer;
+  box-shadow:0 3px 0 rgba(44,64,52,.2); transition:transform .08s, opacity .2s;
+  display:flex; align-items:center; justify-content:center;}
 #modeBar .modeBtn:active{transform:translateY(2px); box-shadow:none;}
-#modeBar .modeBtn.active{background:var(--leaf); color:#FFF;}
+#modeBar .modeBtn.active{background:var(--leaf); box-shadow:0 3px 0 rgba(44,64,52,.2), 0 0 0 3px rgba(111,162,94,.3);}
 #modeBar .modeBtn.locked{opacity:.4; cursor:not-allowed; filter:grayscale(.5);}
 #modeBar .modeBtn.locked:active{transform:none; box-shadow:0 3px 0 rgba(44,64,52,.2);}
 
@@ -64,8 +65,8 @@ header p{margin-top:8px; font-size:13px; color:var(--ink-soft); font-weight:700;
 #bar button.modeLocked:active{transform:none; box-shadow:0 4px 0 rgba(44,64,52,.22);}
 
 @media (max-width:560px){
-  #modeBar{top:auto; bottom:150px;}
-  #modeBar .modeBtn{font-size:11.5px; padding:6px 11px;}
+  #modeBar{left:10px; bottom:20px;}
+  #modeBar .modeBtn{width:40px; height:40px; font-size:17px;}
 }
 
 /* ---------- bottom bar ---------- */
@@ -129,6 +130,9 @@ header p{margin-top:8px; font-size:13px; color:var(--ink-soft); font-weight:700;
 /* 異種牙寶卡片:淡淡的紫色描邊,跟一般家人卡區分 */
 .fcard.variant{border-color:#9B7FD4; box-shadow:0 3px 0 rgba(155,127,212,.35);}
 .fcard.variant.lock{border-color:var(--ink);}
+.fcard.spirit{border-color:#5A9BD8; box-shadow:0 3px 0 rgba(90,155,216,.35); cursor:default;}
+.fcard.spirit.lock{border-color:var(--ink);}
+.fcard.spirit:active{transform:none;}
 
 /* ---------- Focus Mode 子母視窗(右下角觀察窗) ---------- */
 #pipWindow{

@@ -186,7 +186,7 @@ function renderFamily(){
       <small>${met ? F.rel : '還沒來訪'}</small>
     </div>`;
   }
-  body.innerHTML = html + '</div>' + renderVariantSection();
+  body.innerHTML = html + '</div>' + renderVariantSection() + renderSpiritSection();
   body.querySelectorAll('.fcard[data-id]').forEach(card => {
     card.onclick = () => {
       const id = card.dataset.id;
@@ -215,6 +215,22 @@ function renderVariantSection(){
       <div class="dot" style="background:${met ? col : '#DDD'}"></div>
       <b>${met ? F.n : '???'}</b>
       <small>${met ? F.rel : '尚未解鎖'}</small>
+    </div>`;
+  }
+  return html + '</div>';
+}
+function renderSpiritSection(){
+  if(!YY.SPIRIT_ORDER || !YY.SPIRIT_ORDER.length) return '';
+  let html = `<div class="fintro" style="margin-top:18px;">🫐 <b>精靈圖鑑</b>——去「探索世界」用莓果誘捕野生精靈
+    (已捕獲 ${YY.metSpirits.length} / ${YY.SPIRIT_ORDER.length})</div><div class="fgrid">`;
+  for(const id of YY.SPIRIT_ORDER){
+    const S = YY.SPIRITS[id];
+    const met = YY.metSpirits.includes(id);
+    const col = '#' + S.c.toString(16).padStart(6, '0');
+    html += `<div class="fcard spirit ${met ? '' : 'lock'}">
+      <div class="dot" style="background:${met ? col : '#DDD'}"></div>
+      <b>${met ? S.n : '???'}</b>
+      <small>${met ? (S.r === 2 ? '傳說' : S.r === 1 ? '稀有' : '普通') : '尚未捕獲'}</small>
     </div>`;
   }
   return html + '</div>';

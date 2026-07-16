@@ -20,8 +20,8 @@ YY.clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 YY.now   = () => performance.now();
 
 /* ---------- 好感度分級(決定牠怎麼跟你互動) ---------- */
-YY.TRUST_WARM  = 30;   // 到這裡就沒那麼怕你了
-YY.TRUST_CLOSE = 62;   // 到這裡會超黏你
+YY.TRUST_WARM  = 35;   // 到這裡就沒那麼怕你了
+YY.TRUST_CLOSE = 70;   // 到這裡會超黏你
 YY.trustTier = function(){
   const v = YY.trust || 0;
   return v < YY.TRUST_WARM ? 'shy' : v < YY.TRUST_CLOSE ? 'warm' : 'close';
@@ -59,7 +59,6 @@ YY.setMode = function(m){
 YY.canEnterMode = function(m){
   if(m === YY.mode) return true;
   if(YY.mode === 'focus') return false;   // Focus Mode 中,要先關閉才能換模式
-  if(m === 'explore') return false;       // 探索世界:尚未開發
   return true;
 };
 
@@ -71,7 +70,7 @@ YY.focus = { streakSec:0, totalSec:0, graceUntil:0, nextRewardAt:YY.rand(70, 130
 YY.updateFocusStreak = function(t, dt){
   const F = YY.focus;
   if(YY.mode !== 'focus'){ F.streakSec = 0; return; }
-  if(YY.attention.watching){
+  if(YY.attention.trueGaze){
     F.streakSec += dt; F.totalSec += dt;
     F.graceUntil = t + YY.FOCUS_GRACE_MS;
   } else if(t > F.graceUntil){
@@ -87,7 +86,7 @@ YY.save = function(){
     localStorage.setItem('yy3d', JSON.stringify({
       t: YY.tickets, o: YY.owned, w: YY.wear,
       f: YY.metFamily, cur: YY.currentChar, tr: Math.round(YY.trust),
-      v: YY.metVariants,
+      v: YY.metVariants, sp: YY.metSpirits,
     }));
   }catch(e){}
 };
@@ -95,7 +94,7 @@ YY.load = function(){
   YY.tickets = 6; YY.owned = [];
   YY.wear = { head:null, face:null, neck:null, back:null, aura:null };
   YY.metFamily = ['yaya']; YY.currentChar = 'yaya'; YY.trust = 12;
-  YY.metVariants = [];
+  YY.metVariants = []; YY.metSpirits = [];
   try{
     const g = JSON.parse(localStorage.getItem('yy3d') || 'null');
     if(g){
@@ -104,6 +103,7 @@ YY.load = function(){
       YY.metFamily = g.f || ['yaya']; YY.currentChar = g.cur || 'yaya';
       YY.trust = g.tr ?? 12;
       YY.metVariants = g.v || [];
+      YY.metSpirits = g.sp || [];
     }
   }catch(e){}
 };

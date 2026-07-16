@@ -8,17 +8,18 @@ const $ = s => document.querySelector(s);
 
 YY.load();
 YY.initWorld();
+YY.ensureSpiritGroup();
 
 /* ---------- 模式切換(互動 / 探索 / Focus Mode)——
    guard 要在其他按鈕的 onclick 掛上去「之前」註冊,
-   這樣 Focus Mode 中才能真的攔下點擊,而不是被原本的處理器搶先執行 ---------- */
-const LOCKED_IN_FOCUS = ['#btnDraw', '#btnWardrobe', '#btnFamily', '#btnBerry'];
-LOCKED_IN_FOCUS.forEach(sel => {
+   這樣切到別的模式時才能真的攔下點擊,而不是被原本的處理器搶先執行 ---------- */
+const INTERACT_ONLY_BTNS = ['#btnDraw', '#btnWardrobe', '#btnFamily'];
+INTERACT_ONLY_BTNS.forEach(sel => {
   const b = $(sel); if(!b) return;
   b.addEventListener('click', e => {
-    if(YY.mode === 'focus'){
+    if(YY.mode !== 'interact'){
       e.stopImmediatePropagation(); e.preventDefault();
-      YY.flash('Focus Mode 中無法使用,先關閉才能互動', 2400);
+      YY.flash(`${YY.MODE_LABEL[YY.mode]} 中無法使用,先切回互動模式才能用喔`, 2400);
     }
   }, true);
 });
@@ -36,24 +37,29 @@ function renderModeUI(){
   interactBtn.classList.toggle('active', YY.mode === 'interact');
   interactBtn.classList.toggle('locked', !YY.canEnterMode('interact'));
   exploreBtn.classList.toggle('active', YY.mode === 'explore');
-  exploreBtn.classList.toggle('locked', true);   // 探索世界尚未開發,先鎖起來
+  exploreBtn.classList.toggle('locked', !YY.canEnterMode('explore'));
 
   const modeLabel = $('#modeLabel');
-  if(YY.mode === 'focus'){
-    modeLabel.textContent = YY.MODE_LABEL.focus;
+  if(YY.mode !== 'interact'){
+    modeLabel.textContent = YY.MODE_LABEL[YY.mode];
     modeLabel.classList.add('on');
   } else {
     modeLabel.classList.remove('on');
   }
-  LOCKED_IN_FOCUS.forEach(sel => {
-    const b = $(sel); if(b) b.classList.toggle('modeLocked', YY.mode === 'focus');
+  INTERACT_ONLY_BTNS.forEach(sel => {
+    const b = $(sel); if(b) b.classList.toggle('modeLocked', YY.mode !== 'interact');
   });
+  const berryBtn = $('#btnBerry');
+  berryBtn.textContent = YY.mode === 'explore' ? '🫐 誘捕' : '🫐 餵莓果';
 }
 YY.onModeChange = function(m){
   renderModeUI();
   if(m === 'focus'){
     YY.flash('進入 Focus Mode!互動模式的功能先鎖起來,專心感受牠陪你的樣子', 3400);
     if(YY.setPiP) YY.setPiP(true);
+  } else if(m === 'explore'){
+    YY.flash('🌲 進入牙牙森林!點地板散步、點精靈選中牠、按「🫐 誘捕」丟莓果引誘', 4200);
+    if(YY.setPiP) YY.setPiP(false);
   } else if(YY.setPiP){
     YY.setPiP(false);
   }
@@ -63,7 +69,8 @@ $('#btnModeInteract').onclick = () => {
   YY.setMode('interact');
 };
 $('#btnModeExplore').onclick = () => {
-  YY.flash('🌍 探索世界正在開發中,敬請期待!', 2600);
+  if(!YY.canEnterMode('explore')){ YY.flash('Focus Mode 進行中,請先關閉才能進入探索世界', 2600); return; }
+  YY.setMode('explore');
 };
 renderModeUI();
 
@@ -130,6 +137,10 @@ dom.addEventListener('pointerup', e => {
   if(moved < 8){                    // 視為「點一下」
     if(YY.mode === 'focus') return;   // Focus Mode 中不觸發互動模式的點擊行為
     setPtr(e);
+    if(YY.mode === 'explore'){
+      YY.handleExploreTap(ptr.x, ptr.y);
+      return;
+    }
     const { creHit, macHit } = hitTest();
     if(creHit) pet();
     else if(macHit) YY.drawGacha();
@@ -203,11 +214,13 @@ function loop(){
   renderFocusStreak();
   YY.updatePiP(t);
   YY.updateCreature(YY.cre, dt, t);
+  YY.updateCompanion(dt, t);
   YY.updateSelfPlay(t, dt);
   YY.updateCapsule(dt);
   YY.updateParticles(dt);
   YY.updateButterfly(t, dt);
   YY.updateVisits(t);
+  YY.updateExplore(t, dt);
   updateWander(t);
 
   /* 扭蛋機搖晃 */

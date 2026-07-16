@@ -72,6 +72,7 @@ YY.switchCharacter = function(id, withPuff, keepPos){
   YY.save();
 
   $('#whoName').textContent = YY.FAMILY[id].n + ' · ' + YY.FAMILY[id].rel;
+  if(YY.buildCompanionFor) YY.buildCompanionFor(id);
   if(withPuff){
     YY.spawnPuff(cre.x, .8, cre.z);
     YY.sfx.pop();
@@ -115,6 +116,8 @@ YY.updateButterfly = function(t, dt){
 let berry = null, berryCd = 0;
 YY.initBerry = function(){
   $('#btnBerry').onclick = () => {
+    if(YY.mode === 'explore'){ YY.throwLureBerry(); return; }
+    if(YY.mode !== 'interact'){ YY.flash(`${YY.MODE_LABEL[YY.mode]} 中無法使用,先切回互動模式才能用喔`, 2400); return; }
     const t = YY.now();
     if(berry){ YY.flash('地上已經有一顆莓果了!', 2200); return; }
     if(t < berryCd){

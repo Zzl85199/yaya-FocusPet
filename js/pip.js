@@ -58,7 +58,7 @@ YY.updatePiP = function(t){
   const tier = YY.trustTier();
   const s = Math.floor(YY.focus.streakSec);
   const mm = Math.floor(s / 60), ss = String(s % 60).padStart(2, '0');
-  const watchIcon = YY.attention.watching ? '👀 在看你' : '🍃 自己玩中';
+  const watchIcon = YY.attention.trueGaze ? '👀 在看你' : '🍃 自己玩中';
   $('#pipStatus').innerHTML =
     `<b>${cre.def.n}</b> · ${TIER_LABEL[tier] || ''}<br>🎯 ${mm}:${ss} ・ ${watchIcon}`;
 };

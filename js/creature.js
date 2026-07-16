@@ -84,6 +84,14 @@ YY.buildCharacter = function(charId){
     }
     variantFX.position.y = 1.85;
     squash.add(variantFX);
+  } else if(F.variant === 'glow'){
+    variantFX = new THREE.Group();
+    const shell = M(new THREE.SphereGeometry(1.14, 20, 16), F.glowColor || 0xFFFFFF,
+      { transparent:true, opacity:.22 });
+    shell.userData.glow = true;
+    shell.position.y = .96;
+    variantFX.add(shell);
+    squash.add(variantFX);
   }
 
   /* ---------- 飾品錨點 ---------- */
@@ -301,7 +309,7 @@ YY.updateCreature = function(cre, dt, t){
     }
   }
 
-  /* 異種特徵動畫:翅膀拍動 / 星星繞圈 */
+  /* 異種特徵動畫:翅膀拍動 / 星星繞圈 / 光暈脈動 */
   if(cre.variantFX){
     cre.variantFX.children.forEach(ch => {
       if(ch.userData.flap){
@@ -312,6 +320,12 @@ YY.updateCreature = function(cre, dt, t){
       if(ob){
         ob.a += dt * 1.6;
         ch.position.set(Math.cos(ob.a) * ob.r, Math.sin(ob.a * 2) * ob.h * .3, Math.sin(ob.a) * ob.r);
+      }
+      if(ch.userData.glow){
+        const pulse = .16 + Math.sin(t / 420) * .09;
+        ch.material.opacity = pulse;
+        const sc = 1 + Math.sin(t / 420) * .04;
+        ch.scale.setScalar(sc);
       }
     });
   }
