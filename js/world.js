@@ -298,6 +298,14 @@ YY.spawnPuff = function(x, y, z){
     YY.scene.add(p); YY.particles.push(p);
   }
 };
+/* Focus Mode 限定的精靈微光:緩緩飄起、閃爍後消失 */
+YY.spawnSparkle = function(x, y, z){
+  const p = new THREE.Mesh(new THREE.SphereGeometry(.055, 8, 8),
+    mat(0xFFE9A6, { transparent:true, opacity:.95 }));
+  p.position.set(x, y, z);
+  p.userData.p = { vy: YY.rand(.25, .45), life: 2.0, kind:'sparkle', vx: YY.rand(-.15, .15) };
+  YY.scene.add(p); YY.particles.push(p);
+};
 YY.updateParticles = function(dt){
   for(let i = YY.particles.length - 1; i >= 0; i--){
     const o = YY.particles[i], p = o.userData.p;

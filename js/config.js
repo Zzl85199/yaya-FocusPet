@@ -67,7 +67,7 @@ YY.canEnterMode = function(m){
    連續看著螢幕的秒數會累積成 streakSec;
    短暫移開(容錯時間內)不會讓 streak 歸零,只有離開夠久才重置。 */
 YY.FOCUS_GRACE_MS = 4000;   // 短暫移開的容錯時間
-YY.focus = { streakSec:0, totalSec:0, graceUntil:0 };
+YY.focus = { streakSec:0, totalSec:0, graceUntil:0, nextRewardAt:YY.rand(70, 130) };
 YY.updateFocusStreak = function(t, dt){
   const F = YY.focus;
   if(YY.mode !== 'focus'){ F.streakSec = 0; return; }
@@ -75,6 +75,7 @@ YY.updateFocusStreak = function(t, dt){
     F.streakSec += dt; F.totalSec += dt;
     F.graceUntil = t + YY.FOCUS_GRACE_MS;
   } else if(t > F.graceUntil){
+    if(F.streakSec > 0) F.nextRewardAt = YY.rand(70, 130);   // 重新開始一段專注,獎勵門檻也重置
     F.streakSec = 0;   // 移開太久了,重新計時
   }
   /* 移開但還在容錯時間內 → streak 暫停、不歸零 */
@@ -86,6 +87,7 @@ YY.save = function(){
     localStorage.setItem('yy3d', JSON.stringify({
       t: YY.tickets, o: YY.owned, w: YY.wear,
       f: YY.metFamily, cur: YY.currentChar, tr: Math.round(YY.trust),
+      v: YY.metVariants,
     }));
   }catch(e){}
 };
@@ -93,6 +95,7 @@ YY.load = function(){
   YY.tickets = 6; YY.owned = [];
   YY.wear = { head:null, face:null, neck:null, back:null, aura:null };
   YY.metFamily = ['yaya']; YY.currentChar = 'yaya'; YY.trust = 12;
+  YY.metVariants = [];
   try{
     const g = JSON.parse(localStorage.getItem('yy3d') || 'null');
     if(g){
@@ -100,6 +103,7 @@ YY.load = function(){
       YY.wear = Object.assign(YY.wear, g.w || {});
       YY.metFamily = g.f || ['yaya']; YY.currentChar = g.cur || 'yaya';
       YY.trust = g.tr ?? 12;
+      YY.metVariants = g.v || [];
     }
   }catch(e){}
 };

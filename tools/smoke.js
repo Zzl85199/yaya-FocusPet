@@ -36,7 +36,7 @@ THREE.WebGLRenderer = function(){ return {
 global.THREE = THREE;
 global.AudioContext = undefined;
 
-for(const f of ['config.js','items.js','family.js','vision.js','creature.js','world.js','gacha.js','events.js','selfplay.js','main.js']){
+for(const f of ['config.js','items.js','family.js','focus.js','vision.js','creature.js','world.js','gacha.js','events.js','selfplay.js','pip.js','main.js']){
   const code = fs.readFileSync(path.join(root, 'js', f), 'utf8');
   try{ eval(code); }catch(e){ console.error('❌ 載入失敗:', f, e); process.exit(1); }
   console.log('✅ 載入', f);
@@ -46,6 +46,9 @@ const G = w.YY;
 // 手動主迴圈輔助
 const loopFrame = (ms) => { tick(ms);
   G.updateAttention(t);
+  G.updateFocusStreak(t, ms/1000);
+  G.updateFocusExtras(t, ms/1000);
+  G.updatePiP(t);
   G.updateCreature(G.cre, ms/1000, t);
   G.updateSelfPlay(t, ms/1000);
   G.updateCapsule(ms/1000); G.updateParticles(ms/1000);
@@ -159,5 +162,44 @@ console.log('✅ 積木被撞倒(散開=' + scattered + ')後會自己疊回去 
 
 // 11) 玩具球會被踢動
 console.log('✅ 玩具球位置', G.ball.x.toFixed(2), G.ball.z.toFixed(2));
+
+// 12) Focus Mode:模式切換 + 互動模式鎖定
+G.setMode('focus');
+if(G.mode !== 'focus') throw new Error('setMode 沒有切到 focus');
+if(G.canEnterMode('interact')) throw new Error('Focus Mode 中應該不能切回互動模式');
+console.log('✅ Focus Mode 狀態機:切換與模式鎖定判斷 OK');
+
+// 13) Focus Mode 專注獎勵:直接推進 streakSec 超過門檻,應該觸發獎勵
+G.mouse.lastMove = t; G.mouse.inside = true;
+for(let i = 0; i < 30; i++) loopFrame(16);          // 先讓 watching 判定為 true
+const ticketsBefore = G.tickets, trustBefore = G.trust;
+G.focus.streakSec = G.focus.nextRewardAt + 1;
+loopFrame(16);
+if(G.tickets === ticketsBefore && G.trust === trustBefore)
+  throw new Error('專注獎勵門檻到了卻沒有任何反應(券/好感度都沒變)');
+console.log('✅ 專注獎勵機制觸發 OK,券', ticketsBefore, '→', G.tickets, '、好感度', trustBefore.toFixed(1), '→', G.trust.toFixed(1));
+
+// 14) 異種牙寶:強制解鎖 + 家族面板列出
+if(!G.debugUnlockVariant()) throw new Error('強制解鎖異種失敗(可能池子已空或存檔異常)');
+if(!G.metVariants.length) throw new Error('解鎖後 metVariants 是空的');
+G.renderFamily();
+const variantCards = document.querySelectorAll('#familyBody .fcard.variant').length;
+if(variantCards !== G.VARIANT_ORDER.length) throw new Error('異種牙寶卡片數量不對: ' + variantCards);
+console.log('✅ 異種牙寶解鎖 OK,已解鎖', G.metVariants.join(','), '，面板列出', variantCards, '張卡片');
+
+// 15) 切換成異種,確認建模與漂浮動畫不會噴錯
+G.switchCharacter(G.metVariants[0], false);
+for(let i = 0; i < 60; i++) loopFrame(16);
+console.log('✅ 切換異種角色', G.cre.def.n, '動畫 OK');
+
+// 16) 子母視窗:開關 + 渲染不噴錯
+G.setPiP(true);
+for(let i = 0; i < 20; i++) loopFrame(16);
+if(!G.pipOn) throw new Error('setPiP(true) 沒有生效');
+G.setPiP(false);
+if(G.pipOn) throw new Error('setPiP(false) 沒有生效');
+console.log('✅ 子母視窗開關 + 渲染 OK');
+
+G.setMode('interact');   // 還原,避免影響後續(若有)
 
 console.log('\n🎉 全部煙霧測試通過!圖鑑總數:', G.ITEM_COUNT);

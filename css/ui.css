@@ -126,6 +126,34 @@ header p{margin-top:8px; font-size:13px; color:var(--ink-soft); font-weight:700;
 .fcard.lock .dot::after{content:'?'; position:absolute; inset:0; display:grid; place-items:center;
   font-weight:800; font-size:22px; color:var(--ink);}
 
+/* 異種牙寶卡片:淡淡的紫色描邊,跟一般家人卡區分 */
+.fcard.variant{border-color:#9B7FD4; box-shadow:0 3px 0 rgba(155,127,212,.35);}
+.fcard.variant.lock{border-color:var(--ink);}
+
+/* ---------- Focus Mode 子母視窗(右下角觀察窗) ---------- */
+#pipWindow{
+  position:fixed; right:16px; bottom:16px; z-index:45;
+  width:168px; background:var(--card); border:3px solid var(--ink); border-radius:16px;
+  box-shadow:0 8px 20px rgba(0,0,0,.22);
+  display:none; overflow:hidden;
+}
+#pipWindow.on{display:block;}
+#pipHead{
+  display:flex; align-items:center; justify-content:space-between;
+  font-size:11px; font-weight:800; letter-spacing:.03em; color:var(--ink);
+  background:#F3F0E4; padding:5px 8px; border-bottom:2px solid var(--ink);
+}
+#pipHead button{
+  border:none; background:transparent; color:var(--ink-soft); font-weight:800;
+  cursor:pointer; font-size:12px; line-height:1; padding:2px 4px;
+}
+#pipCanvas{display:block; width:100%; height:122px; background:var(--bg);}
+#pipStatus{font-size:11px; font-weight:700; color:var(--ink); padding:6px 8px; line-height:1.6;}
+@media (max-width:560px){
+  #pipWindow{width:132px; right:10px; bottom:150px;}
+  #pipCanvas{height:96px;}
+}
+
 @media (max-width:560px){
   header p{display:none;}
   #bar button{font-size:13.5px; padding:10px 13px;}

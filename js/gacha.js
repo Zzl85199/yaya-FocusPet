@@ -186,16 +186,38 @@ function renderFamily(){
       <small>${met ? F.rel : '還沒來訪'}</small>
     </div>`;
   }
-  body.innerHTML = html + '</div>';
-  body.querySelectorAll('.fcard').forEach(card => {
+  body.innerHTML = html + '</div>' + renderVariantSection();
+  body.querySelectorAll('.fcard[data-id]').forEach(card => {
     card.onclick = () => {
       const id = card.dataset.id;
-      if(!YY.metFamily.includes(id)){ YY.flash('這位家人還沒來訪過,再等等吧!', 2400); return; }
+      const known = YY.metFamily.includes(id) || (YY.metVariants && YY.metVariants.includes(id));
+      if(!known){
+        const isVariant = YY.VARIANT_ORDER && YY.VARIANT_ORDER.includes(id);
+        YY.flash(isVariant ? '這隻異種還沒解鎖——在 Focus Mode 專注久一點試試看!' : '這位家人還沒來訪過,再等等吧!', 2600);
+        return;
+      }
       if(id === YY.currentChar) return;
       YY.switchCharacter(id, true);
       renderFamily();
     };
   });
+}
+function renderVariantSection(){
+  if(!YY.VARIANT_ORDER || !YY.VARIANT_ORDER.length) return '';
+  let html = `<div class="fintro" style="margin-top:18px;">🌟 <b>異種牙寶</b>——Focus Mode 專注久一點,
+    有機率隨機解鎖(已解鎖 ${YY.metVariants.length} / ${YY.VARIANT_ORDER.length})</div><div class="fgrid">`;
+  for(const id of YY.VARIANT_ORDER){
+    const F = YY.FAMILY[id];
+    const met = YY.metVariants.includes(id);
+    const now = YY.currentChar === id;
+    const col = '#' + F.body.toString(16).padStart(6, '0');
+    html += `<div class="fcard variant ${met ? '' : 'lock'} ${now ? 'now' : ''}" data-id="${id}">
+      <div class="dot" style="background:${met ? col : '#DDD'}"></div>
+      <b>${met ? F.n : '???'}</b>
+      <small>${met ? F.rel : '尚未解鎖'}</small>
+    </div>`;
+  }
+  return html + '</div>';
 }
 YY.renderFamily = renderFamily;
 

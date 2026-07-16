@@ -62,6 +62,30 @@ YY.buildCharacter = function(charId){
   squash.add(sproutG);
   buildSprout(sproutG, F.sprout, face);
 
+  /* ---------- 異種特徵(Focus Mode 解鎖的飛行 / 閃亮異種) ---------- */
+  let variantFX = null;
+  if(F.variant === 'flying'){
+    variantFX = new THREE.Group();
+    [-1, 1].forEach(s => {
+      const w = M(new THREE.SphereGeometry(.38, 12, 10), 0xEAF7FB, { transparent:true, opacity:.85 });
+      w.scale.set(1.3, .5, .16);
+      w.position.set(s * .56, 1.16, -.22);
+      w.rotation.z = s * .55;
+      w.userData.flap = { side: s };
+      variantFX.add(w);
+    });
+    squash.add(variantFX);
+  } else if(F.variant === 'sparkle'){
+    variantFX = new THREE.Group();
+    for(let i = 0; i < 3; i++){
+      const p = M(new THREE.SphereGeometry(.055, 8, 8), 0xF2E9C9, { transparent:true, opacity:.9 });
+      p.userData.orbit = { a: i * 2.1, r: .78 + i * .1, h: .5 + i * .14 };
+      variantFX.add(p);
+    }
+    variantFX.position.y = 1.85;
+    squash.add(variantFX);
+  }
+
   /* ---------- 飾品錨點 ---------- */
   const anchors = {
     head: pt(squash, 0, 1.92, 0),
@@ -75,7 +99,7 @@ YY.buildCharacter = function(charId){
   root.traverse(o => { if(o.isMesh) o.castShadow = true; });
 
   return {
-    id: charId, def: F, root, squash, body, face, eyes, mouth, anchors,
+    id: charId, def: F, root, squash, body, face, eyes, mouth, anchors, variantFX,
     /* 動態 */
     x: 0, z: 1.2, tx: 0, tz: 1.2,
     vy: 0, air: 0, hopT: 0,
@@ -185,6 +209,7 @@ YY.updateCreature = function(cre, dt, t){
     if(cre.goal === 'berry' && YY.eatBerry) YY.eatBerry(cre);
   }
   const hop = Math.abs(Math.sin(cre.hopT)) * (dist > .08 ? .34 : 0);
+  const floatY = cre.def.variant === 'flying' ? .5 + Math.sin(t / 480) * .13 : 0;
 
   /* 彈簧壓扁(被摸 / 抽到扭蛋時 squashV 會被踢一下) */
   cre.squashA += (-cre.squashV * 90 - cre.squashA * 8) * dt;
@@ -195,7 +220,7 @@ YY.updateCreature = function(cre, dt, t){
 
   /* 呼吸 + 位置 */
   const breathe = 1 + Math.sin(t / 620) * .015;
-  cre.root.position.set(cre.x, hop, cre.z);
+  cre.root.position.set(cre.x, hop + floatY, cre.z);
   cre.body.scale.set(1 * breathe, .96 / breathe, .92 * breathe);
 
   /* 眨眼(打瞌睡時不眨) */
@@ -274,6 +299,21 @@ YY.updateCreature = function(cre, dt, t){
       });
       cre.mouth.position.x *= .9;
     }
+  }
+
+  /* 異種特徵動畫:翅膀拍動 / 星星繞圈 */
+  if(cre.variantFX){
+    cre.variantFX.children.forEach(ch => {
+      if(ch.userData.flap){
+        const f = Math.sin(t / 100) * .3;
+        ch.rotation.z = ch.userData.flap.side * (.5 + f);
+      }
+      const ob = ch.userData.orbit;
+      if(ob){
+        ob.a += dt * 1.6;
+        ch.position.set(Math.cos(ob.a) * ob.r, Math.sin(ob.a * 2) * ob.h * .3, Math.sin(ob.a) * ob.r);
+      }
+    });
   }
 
   /* 飾品動畫:光環旋轉 / 翅膀拍動 / 氣球搖晃 */

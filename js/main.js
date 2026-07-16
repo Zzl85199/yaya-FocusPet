@@ -51,7 +51,12 @@ function renderModeUI(){
 }
 YY.onModeChange = function(m){
   renderModeUI();
-  if(m === 'focus') YY.flash('進入 Focus Mode!互動模式的功能先鎖起來,專心感受牠陪你的樣子', 3400);
+  if(m === 'focus'){
+    YY.flash('進入 Focus Mode!互動模式的功能先鎖起來,專心感受牠陪你的樣子', 3400);
+    if(YY.setPiP) YY.setPiP(true);
+  } else if(YY.setPiP){
+    YY.setPiP(false);
+  }
 };
 $('#btnModeInteract').onclick = () => {
   if(!YY.canEnterMode('interact')){ YY.flash('Focus Mode 進行中,請先關閉才能切回互動模式', 2600); return; }
@@ -194,7 +199,9 @@ function loop(){
 
   YY.updateAttention(t);
   YY.updateFocusStreak(t, dt);
+  YY.updateFocusExtras(t, dt);
   renderFocusStreak();
+  YY.updatePiP(t);
   YY.updateCreature(YY.cre, dt, t);
   YY.updateSelfPlay(t, dt);
   YY.updateCapsule(dt);
