@@ -7,29 +7,49 @@
 (function(){
 const $ = s => document.querySelector(s);
 
-/* ---------- ① 家人隨機來訪 ---------- */
-let nextVisit = YY.now() + YY.rand(35000, 70000);
+/* ---------- ① 家人來訪 ----------
+   已認識的家人:偶爾隨機來串門子(單純調劑氣氛,不影響解鎖)
+   還沒認識的家人:各自有專屬的解鎖條件(見 family.js 的 YY.FAMILY_UNLOCK),
+   條件達成才會「叮咚!」來訪並永久解鎖,不再是單純等時間到。
+   在牙牙森林探索時,家不在,所以兩種來訪都先暫停,回家後才會觸發。 */
+let nextVisit = YY.now() + YY.rand(50000, 90000);
 let swapping = false;
+let lastUnlockCheck = 0;
 
 YY.updateVisits = function(t){
   if(swapping || YY.capsule) return;
+  if(YY.mode === 'explore') return;   // #4 人在森林裡,家人不會跑來按門鈴
+
+  checkFamilyUnlocks(t);
+
   if(t < nextVisit) return;
-  nextVisit = t + YY.rand(50000, 110000);
-
-  /* 挑一位不是現任的家人,優先沒見過的 */
-  const others = YY.FAMILY_ORDER.filter(id => id !== YY.currentChar);
-  const fresh  = others.filter(id => !YY.metFamily.includes(id));
-  const pool   = (fresh.length && Math.random() < .75) ? fresh : others;
-  const id = pool[Math.floor(Math.random() * pool.length)];
-
+  nextVisit = t + YY.rand(60000, 130000);
+  /* 只從「已經認識」的家人裡隨機選一位來串門子 */
+  const known = YY.FAMILY_ORDER.filter(id => id !== YY.currentChar && YY.metFamily.includes(id));
+  if(!known.length) return;
+  const id = known[Math.floor(Math.random() * known.length)];
   familyVisit(id);
 };
 
-function familyVisit(id){
+/* 每 2.5 秒檢查一次(不用每幀檢查)哪個還沒解鎖的家人條件已經達成 */
+function checkFamilyUnlocks(t){
+  if(t - lastUnlockCheck < 2500) return;
+  lastUnlockCheck = t;
+  for(const id of YY.FAMILY_ORDER){
+    if(id === 'yaya' || YY.metFamily.includes(id)) continue;
+    const prog = YY.familyUnlockProgress(id);
+    if(prog && prog.pct >= 100){
+      familyVisit(id, prog.unlockMsg);
+      break;   // 一次只解鎖一位
+    }
+  }
+}
+
+function familyVisit(id, unlockMsg){
   swapping = true;
   const F = YY.FAMILY[id];
   YY.sfx.doorbell();
-  YY.flash(`叮咚!是${F.rel}——${F.n} 來玩了!`, 3000);
+  YY.flash(unlockMsg ? `叮咚!${unlockMsg}` : `叮咚!是${F.rel}——${F.n} 來玩了!`, 3400);
 
   const firstTime = !YY.metFamily.includes(id);
 
@@ -151,6 +171,9 @@ YY.eatBerry = function(cre){
   cre.squashV = -.32;
   setTimeout(() => YY.spawnHeart(cre.x, 2.0, cre.z), 300);
   YY.bumpTrust(4);                          // 餵食很加分,好感度 +4
+  YY.berryFed = (YY.berryFed || 0) + 1;     // 給芽媽解鎖條件、也順便餵「餵莓果」條件的蛋
+  if(YY.eggProgressBerry) YY.eggProgressBerry();
+  YY.save();
   /* 扭蛋券改成隨機掉落(約一半機率) */
   if(Math.random() < .55){
     YY.addTickets(1, `${cre.def.n}吃得好開心,還回送你一張扭蛋券!`);

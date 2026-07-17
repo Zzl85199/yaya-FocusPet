@@ -193,6 +193,8 @@ function pet(){
   YY.sfx.chirp();
   YY.spawnHeart(cre.x, 2.1 * cre.def.size, cre.z, 0xFF7B8E);
   YY.bumpTrust(2);                       // 摸摸會加好感度(順便更新那條進度條)
+  YY.patCount = (YY.patCount || 0) + 1;
+  if(YY.eggProgressPat) YY.eggProgressPat();
   /* 扭蛋券改成「隨機掉落」,不再是摸幾下就一定有 */
   const chance = .14 + (YY.trust / 100) * .12;   // 好感度越高、掉券機率略高(約 14%~26%)
   if(Math.random() < chance){
@@ -251,6 +253,7 @@ function loop(){
   YY.updateButterfly(t, dt);
   YY.updateVisits(t);
   YY.updateExplore(t, dt);
+  if(YY.eggProgressTime) YY.eggProgressTime(dt);   // 靜靜等待的蛋,不管在不在森林都會慢慢孵
 
   if(YY.mode === 'explore') YY.updateForestCam(t);
 

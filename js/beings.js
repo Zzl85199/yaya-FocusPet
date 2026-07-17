@@ -137,19 +137,20 @@ YY.buildPetMesh = function(species, stage){
 
 /* ============================================================
    二、精靈 SPIRITS(只待在家)—— 種類更多、加上顏色/會飛/發光變化
+   每種都加一個專屬 feature,外型才不會只有換色而已
    ============================================================ */
 YY.SPIRITS = {
-  leaf:   { n:'葉葉精靈', c:0x8FCB6E, r:0 },
-  dew:    { n:'露露精靈', c:0x8FCBE6, r:0 },
-  pebble: { n:'石石精靈', c:0xC4A47A, r:0 },
-  sprout: { n:'芽芽精靈', c:0xBEE39A, r:0 },
-  bloom:  { n:'花花精靈', c:0xF2A0B5, r:0 },
-  moth:   { n:'蛾蛾精靈', c:0xB79BE8, r:1, flying:true },
-  ember:  { n:'燼燼精靈', c:0xF2984A, r:1, glow:true },
-  frost:  { n:'霜霜精靈', c:0xCDEFF5, r:1, glow:true },
-  spark:  { n:'電電精靈', c:0xF2E24E, r:1, flying:true },
-  moon:   { n:'月月精靈', c:0xE8E4D4, r:2, glow:true },
-  aurora: { n:'極光精靈', c:0x9BE8D4, r:2, flying:true, glow:true },
+  leaf:   { n:'葉葉精靈', c:0x8FCB6E, r:0, feature:'leafcap' },   // 頭上頂一片葉子
+  dew:    { n:'露露精靈', c:0x8FCBE6, r:0, feature:'droplet' },   // 頭頂一滴水珠
+  pebble: { n:'石石精靈', c:0xC4A47A, r:0, feature:'rockbumps' },// 背上一排石粒
+  sprout: { n:'芽芽精靈', c:0xBEE39A, r:0, feature:'twinsprout' },// 頭上兩根小嫩芽
+  bloom:  { n:'花花精靈', c:0xF2A0B5, r:0, feature:'petals' },   // 一圈花瓣裙擺
+  moth:   { n:'蛾蛾精靈', c:0xB79BE8, r:1, flying:true, feature:'antennae' },  // 觸角 + 花紋翅膀
+  ember:  { n:'燼燼精靈', c:0xF2984A, r:1, glow:true, feature:'flame' },       // 頭頂小火苗
+  frost:  { n:'霜霜精靈', c:0xCDEFF5, r:1, glow:true, feature:'icespikes' },   // 身上冰刺
+  spark:  { n:'電電精靈', c:0xF2E24E, r:1, flying:true, feature:'bolt' },     // 之字形閃電尾巴
+  moon:   { n:'月月精靈', c:0xE8E4D4, r:2, glow:true, feature:'crescent' },   // 頭頂懸浮弦月
+  aurora: { n:'極光精靈', c:0x9BE8D4, r:2, flying:true, glow:true, feature:'ribbon' }, // 拖曳彩帶
 };
 YY.SPIRIT_ORDER = Object.keys(YY.SPIRITS);
 
@@ -160,6 +161,74 @@ YY.buildSpiritMesh = function(speciesId){
   body.scale.set(1, .9, 1); g.add(body);
   [-1, 1].forEach(s => { const eye = M(new THREE.SphereGeometry(.04, 8, 6), INK);
     eye.position.set(s * .09, .05, .21); g.add(eye); });
+
+  /* ---- 每種精靈的專屬外觀特徵 ---- */
+  switch(S.feature){
+    case 'leafcap': {
+      const leaf = M(new THREE.SphereGeometry(.09, 8, 6), 0x5C9A4A);
+      leaf.scale.set(1.3, .3, .8); leaf.position.set(0, .27, 0); leaf.rotation.y = .4;
+      g.add(leaf);
+      break;
+    }
+    case 'droplet': {
+      const drop = M(new THREE.SphereGeometry(.06, 8, 8), 0xCFE9F5, { transparent:true, opacity:.85 });
+      drop.scale.set(.8, 1.3, .8); drop.position.set(0, .32, .02); g.add(drop);
+      break;
+    }
+    case 'rockbumps': {
+      for(let i = 0; i < 3; i++){ const r = M(new THREE.SphereGeometry(.05, 8, 6), 0xA88A5E);
+        r.position.set((i - 1) * .09, .16, -.16); g.add(r); }
+      break;
+    }
+    case 'twinsprout': {
+      [-1, 1].forEach(s => { const sp = M(new THREE.ConeGeometry(.03, .13, 5), 0x6FA25E);
+        sp.position.set(s * .06, .29, 0); sp.rotation.z = s * -.2; g.add(sp); });
+      break;
+    }
+    case 'petals': {
+      for(let i = 0; i < 6; i++){ const a = i / 6 * Math.PI * 2;
+        const p = M(new THREE.SphereGeometry(.06, 8, 6), 0xF7C7D6, { transparent:true, opacity:.9 });
+        p.scale.set(1, .35, 1.3); p.position.set(Math.cos(a) * .2, -.08, Math.sin(a) * .2 * .6 + .05);
+        p.rotation.y = a; g.add(p); }
+      break;
+    }
+    case 'antennae': {
+      [-1, 1].forEach(s => { const a = M(new THREE.CylinderGeometry(.012, .012, .14, 5), INK);
+        a.position.set(s * .06, .28, .06); a.rotation.z = s * -.4; g.add(a);
+        const tip = M(new THREE.SphereGeometry(.02, 6, 6), INK); tip.position.set(s * .1, .34, .1); g.add(tip); });
+      break;
+    }
+    case 'flame': {
+      const flame = M(new THREE.ConeGeometry(.06, .16, 8), 0xF2C14E, { transparent:true, opacity:.9 });
+      flame.position.set(0, .32, 0); g.add(flame);
+      break;
+    }
+    case 'icespikes': {
+      for(let i = 0; i < 4; i++){ const a = i / 4 * Math.PI * 2;
+        const sp = M(new THREE.ConeGeometry(.04, .14, 5), 0xB8E6F0, { transparent:true, opacity:.85 });
+        sp.position.set(Math.cos(a) * .19, .06, Math.sin(a) * .19);
+        sp.rotation.z = Math.cos(a) * -1.2; sp.rotation.x = Math.sin(a) * 1.2; g.add(sp); }
+      break;
+    }
+    case 'bolt': {
+      const bolt = M(new THREE.ConeGeometry(.03, .22, 4), 0xE8D63A);
+      bolt.position.set(0, .1, -.22); bolt.rotation.x = 2.4; bolt.rotation.z = .3; g.add(bolt);
+      break;
+    }
+    case 'crescent': {
+      const moon = M(new THREE.TorusGeometry(.1, .035, 8, 16, Math.PI * 1.3), 0xFFF6D8, { transparent:true, opacity:.95 });
+      moon.position.set(0, .34, 0); moon.rotation.x = Math.PI / 2;
+      g.add(moon);
+      break;
+    }
+    case 'ribbon': {
+      for(let i = 0; i < 3; i++){ const rib = M(new THREE.SphereGeometry(.05, 8, 6),
+        [0xF2A0B5, 0xB79BE8, 0x8FCBE6][i], { transparent:true, opacity:.75 });
+        rib.scale.set(.5, .3, 1.6); rib.position.set(0, .02, -.22 - i * .12); g.add(rib); }
+      break;
+    }
+  }
+
   if(S.flying){
     [-1, 1].forEach(s => { const w = M(new THREE.SphereGeometry(.12, 10, 8), S.c, { transparent:true, opacity:.6 });
       w.scale.set(1, .5, .18); w.position.set(s * .26, .12, -.05); w.rotation.z = s * .5;
@@ -183,7 +252,8 @@ function weightedPick(order, table){
 }
 YY.pickSpiritSpecies = () => weightedPick(YY.SPIRIT_ORDER, YY.SPIRITS);
 YY.pickPetSpecies    = () => weightedPick(YY.PET_ORDER, YY.PETS);
-YY.catchChance = r => [.7, .42, .18][r];
+/* 誘捕成功率調低(原本 .7/.42/.18 太容易了),稀有度越高越難抓 */
+YY.catchChance = r => [.4, .22, .09][r];
 
 /* ============================================================
    三、玩家擁有資料的小工具(存檔欄位在 config.js)

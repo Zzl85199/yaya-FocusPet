@@ -18,7 +18,7 @@ YY.enterForest = function(){
   }
   YY.forestCam.fpv = false;
   YY.exploreWalk._lx = cre ? cre.x : 0; YY.exploreWalk._ly = cre ? cre.z : 0;
-  nextSpawnAt = 0; nextEggAt = YY.now() + YY.rand(4000, 9000);
+  nextSpawnAt = 0; nextEggRollAt = YY.now() + YY.rand(4000, 9000);
   if(YY.renderForestHint) YY.renderForestHint();
 };
 YY.leaveForest = function(){
@@ -59,11 +59,18 @@ function removeWild(w){
   if(YY.exploreTarget === w.uid) YY.exploreTarget = null;
 }
 
-/* ---------- 蛋:森林裡出現,可撿起 ---------- */
-let nextEggAt = 0;
+/* ---------- 蛋:森林裡「有機率」出現,不是每次都有,可撿起 ---------- */
+let nextEggRollAt = 0;
+function maybeSpawnEgg(t){
+  if(YY.eggGroup.children.length >= 1) return;   // 同時最多 1 顆蛋在地上,比較稀有
+  if(t < nextEggRollAt) return;
+  nextEggRollAt = t + YY.rand(10000, 18000);
+  if(Math.random() < .35) spawnEggOnGround();     // 每次骰只有 35% 機率真的生出蛋
+}
 function spawnEggOnGround(){
   const g = new THREE.Group();
-  const shell = YY.M(new THREE.SphereGeometry(.24, 14, 12), 0xF5EAD0);
+  const tint = [0xF5EAD0, 0xE8D6F0, 0xD6EAF5, 0xF5E0D6, 0xE0F5D9, 0xF5D6E8][Math.floor(Math.random() * 6)];
+  const shell = YY.M(new THREE.SphereGeometry(.24, 14, 12), tint);
   shell.scale.set(1, 1.25, 1); shell.position.y = .26;
   const dot1 = YY.M(new THREE.SphereGeometry(.05, 8, 6), 0xF2A0B5); dot1.position.set(.1, .3, .18);
   const dot2 = YY.M(new THREE.SphereGeometry(.05, 8, 6), 0x8FCBE6); dot2.position.set(-.08, .2, .2);
@@ -71,7 +78,7 @@ function spawnEggOnGround(){
   const a = Math.random() * Math.PI * 2, r = YY.rand(2.5, 6);
   g.position.set(Math.cos(a) * r, 0, Math.sin(a) * r - 1);
   const uid = YY.newUid('groundegg');
-  g.userData.eggUid = uid;
+  g.userData.eggUid = uid; g.userData.tint = tint;
   g.traverse(o => { if(o.isMesh){ o.castShadow = true; o.userData.eggUid = uid; } });
   YY.eggGroup.add(g);
 }
@@ -100,9 +107,10 @@ YY.handleExploreTap = function(ndcX, ndcY){
     if(eh.length){
       let obj = eh[0].object; while(obj && !obj.userData.eggUid) obj = obj.parent;
       if(obj){
+        const tint = obj.userData.tint;
         YY.eggGroup.remove(obj);
         YY.spawnPuff(obj.position.x, .4, obj.position.z);
-        YY.addEgg();
+        YY.addEgg(tint);
         return;
       }
     }
@@ -156,6 +164,7 @@ function resolveCatch(w){
   if(success){
     YY.sfx.tada();
     YY.spawnConfetti(w.x, .6, w.z, info.r === 2 ? 44 : 26);
+    YY.catchCount = (YY.catchCount || 0) + 1;
     if(w.kind === 'pet'){
       const firstTime = !YY.metPets.includes(w.species);
       YY.addPet(w.species);
@@ -191,8 +200,8 @@ YY.updateExplore = function(t, dt){
     return;
   }
 
-  if(wild.length < 3 && t > nextSpawnAt){ spawnWild(); nextSpawnAt = t + YY.rand(4500, 10000); }
-  if(YY.eggGroup.children.length < 2 && t > nextEggAt){ spawnEggOnGround(); nextEggAt = t + YY.rand(12000, 24000); }
+  if(wild.length < 2 && t > nextSpawnAt){ spawnWild(); nextSpawnAt = t + YY.rand(6000, 13000); }
+  maybeSpawnEgg(t);
 
   for(const w of wild.slice()){
     const dx = w.tx - w.x, dz = w.tz - w.z, dist = Math.hypot(dx, dz);
@@ -224,7 +233,10 @@ YY.updateExplore = function(t, dt){
   /* 蛋在地上輕輕搖 */
   YY.eggGroup.children.forEach((e, i) => { e.rotation.z = Math.sin(t / 400 + i) * .12; });
 
-  /* 散步:累積距離 → 好感度 / 寵物進化 / 蛋孵化 */
+  /* 累積在森林探索的時間(給芽弟解鎖條件用) */
+  YY.exploreSec = (YY.exploreSec || 0) + dt;
+
+  /* 散步:累積距離 → 好感度 / 寵物進化 / 蛋孵化(只有「散步」條件的蛋會前進) */
   const cre = YY.cre;
   if(cre){
     const W = YY.exploreWalk;
@@ -234,7 +246,7 @@ YY.updateExplore = function(t, dt){
     W._lx = cre.x; W._ly = cre.z;
     if(step > 0.0005){
       YY.addWalkToActivePet(step);     // #4 帶去散步 → 進化
-      YY.progressEggs(step, dt);       // #6 邊散步邊孵蛋
+      if(YY.eggProgressWalk) YY.eggProgressWalk(step);   // #6 邊散步邊孵蛋(僅限「散步」條件的蛋)
     }
     if(W.dist > W.nextRewardAt){
       W.nextRewardAt = W.dist + YY.rand(18, 30);

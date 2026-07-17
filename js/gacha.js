@@ -15,6 +15,7 @@ YY.drawGacha = function(){
   }
   drawing = true;
   YY.tickets--; YY.save(); renderWardrobe();
+  YY.gachaDraws = (YY.gachaDraws || 0) + 1;
 
   /* 決定結果 */
   const roll = Math.random() * 100;
@@ -173,17 +174,21 @@ function renderFamily(){
   const body = $('#familyBody');
   if(!$('#family').classList.contains('on')) return;
 
-  let html = `<div class="fintro">家人會不定時「叮咚!」來訪,見過一次就永久認識,
-    之後隨時可以點頭像換人陪你。飾品是全家共用的衣櫃喔。</div><div class="fgrid">`;
+  let html = `<div class="fintro">家人各自有不同的解鎖方式(不是單純等時間到喔),
+    見過一次就永久認識,之後隨時可以點頭像換人陪你。飾品是全家共用的衣櫃喔。</div><div class="fgrid">`;
   for(const id of YY.FAMILY_ORDER){
     const F = YY.FAMILY[id];
     const met = YY.metFamily.includes(id);
     const now = YY.currentChar === id;
     const col = '#' + F.body.toString(16).padStart(6, '0');
+    const prog = (!met && YY.familyUnlockProgress) ? YY.familyUnlockProgress(id) : null;
+    const hint = prog ? `<div class="petbar" style="margin-top:4px;"><i style="width:${prog.pct}%"></i></div>
+        <small>${prog.label} ${prog.cur}/${prog.need}${prog.unit}</small>` : '';
     html += `<div class="fcard ${met ? '' : 'lock'} ${now ? 'now' : ''}" data-id="${id}">
       <div class="dot" style="background:${met ? col : '#DDD'}"></div>
       <b>${met ? F.n : '???'}</b>
-      <small>${met ? F.rel : '還沒來訪'}</small>
+      <small>${met ? F.rel : (prog ? prog.hint : '還沒來訪')}</small>
+      ${hint}
     </div>`;
   }
   body.innerHTML = html + '</div>' + renderPetSection() + renderEggSection()
@@ -198,6 +203,10 @@ function renderFamily(){
         return;
       }
       if(id === YY.currentChar) return;
+      if(YY.mode === 'explore'){
+        YY.flash('牙牙森林裡沒辦法換人喔——先走回家才能切換家族成員!', 2800);
+        return;
+      }
       YY.switchCharacter(id, true);
       renderFamily();
     };
@@ -241,23 +250,25 @@ function renderPetSection(){
   return html + `</div>`;
 }
 
-/* ---------- 🥚 孵蛋器(森林撿到的蛋在這裡孵成精靈) ---------- */
+/* ---------- 🥚 孵蛋器(森林撿到的蛋在這裡孵化,每顆蛋條件不同) ---------- */
 function renderEggSection(){
   const eggs = YY.eggs || [];
-  let html = `<div class="fintro" style="margin-top:18px;">🥚 <b>孵蛋器</b>——在牙牙森林撿到的蛋放這裡,
-    散步或等待都會加快孵化,孵出來是一隻精靈,會住進你家。</div>`;
+  let html = `<div class="fintro" style="margin-top:18px;">🥚 <b>孵蛋器</b>——在牙牙森林「有機率」撿到蛋帶回來,
+    每顆蛋孵化的條件不太一樣,點開來看看牠需要什麼吧!</div>`;
   if(!eggs.length){
-    html += `<div class="wempty">目前沒有蛋。去森林地上找找看!</div>`;
+    html += `<div class="wempty">目前沒有蛋。去森林地上找找看,運氣好才會有喔!</div>`;
     return html;
   }
   html += `<div class="petlist">`;
   eggs.forEach((egg, i) => {
-    const pct = Math.min(100, Math.round(egg.prog / YY.EGG_HATCH * 100));
+    const C = YY.EGG_COND ? YY.EGG_COND[egg.cond] : null;
+    const pct = Math.min(100, Math.round(egg.prog / egg.need * 100));
+    const tint = '#' + (egg.tint || 0xF5EAD0).toString(16).padStart(6, '0');
     html += `<div class="petrow">
-      <div class="dot" style="background:#F5EAD0">🥚</div>
-      <div class="petinfo"><b>神秘的蛋 #${i + 1}</b>
+      <div class="dot" style="background:${tint}">${C ? C.icon : '🥚'}</div>
+      <div class="petinfo"><b>神秘的蛋 #${i + 1}</b> <em>${C ? C.label : '孵化中'}</em>
         <div class="petbar"><i style="width:${pct}%"></i></div>
-        <small>孵化 ${pct}%</small></div>
+        <small>${C ? C.hint + '・' : ''}${Math.floor(egg.prog)}/${egg.need}${C ? C.unit : ''}(${pct}%)</small></div>
     </div>`;
   });
   return html + `</div>`;

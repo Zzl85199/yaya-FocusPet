@@ -366,6 +366,7 @@ YY.updateFocusStreak = function(t, dt){
   if(YY.attention.trueGaze){
     F.streakSec += dt; F.totalSec += dt;
     F.graceUntil = t + YY.FOCUS_GRACE_MS;
+    if(YY.eggProgressFocus) YY.eggProgressFocus(dt);   // 給「專注時間」條件的蛋累積進度
   } else if(t > F.graceUntil){
     if(F.streakSec > 0) F.nextRewardAt = YY.rand(70, 130);   // 重新開始一段專注,獎勵門檻也重置
     F.streakSec = 0;   // 移開太久了,重新計時
@@ -382,6 +383,9 @@ YY.save = function(){
       v: YY.metVariants, sp: YY.metSpirits,
       op: YY.ownedPets, ap: YY.activePet, hs: YY.homeSpirits,
       eg: YY.eggs, mp: YY.metPets,
+      es: Math.round(YY.exploreSec || 0), cc: YY.catchCount || 0,
+      bf: YY.berryFed || 0, gd: YY.gachaDraws || 0, pc: YY.patCount || 0,
+      fs: Math.round((YY.focus && YY.focus.totalSec) || 0),
     }));
   }catch(e){}
 };
@@ -392,6 +396,7 @@ YY.load = function(){
   YY.metVariants = []; YY.metSpirits = [];
   YY.ownedPets = []; YY.activePet = null; YY.homeSpirits = [];
   YY.eggs = []; YY.metPets = [];
+  YY.exploreSec = 0; YY.catchCount = 0; YY.berryFed = 0; YY.gachaDraws = 0; YY.patCount = 0;
   let fresh = true;
   try{
     const g = JSON.parse(localStorage.getItem('yy3d') || 'null');
@@ -408,6 +413,9 @@ YY.load = function(){
       YY.homeSpirits = g.hs || [];
       YY.eggs = g.eg || [];
       YY.metPets = g.mp || [];
+      YY.exploreSec = g.es || 0; YY.catchCount = g.cc || 0;
+      YY.berryFed = g.bf || 0; YY.gachaDraws = g.gd || 0; YY.patCount = g.pc || 0;
+      YY.focus.totalSec = g.fs || 0;
     }
   }catch(e){}
   /* 第一次玩:送一隻起始寵物,讓牙寶一開始就有夥伴陪 */
@@ -1094,19 +1102,20 @@ YY.buildPetMesh = function(species, stage){
 
 /* ============================================================
    二、精靈 SPIRITS(只待在家)—— 種類更多、加上顏色/會飛/發光變化
+   每種都加一個專屬 feature,外型才不會只有換色而已
    ============================================================ */
 YY.SPIRITS = {
-  leaf:   { n:'葉葉精靈', c:0x8FCB6E, r:0 },
-  dew:    { n:'露露精靈', c:0x8FCBE6, r:0 },
-  pebble: { n:'石石精靈', c:0xC4A47A, r:0 },
-  sprout: { n:'芽芽精靈', c:0xBEE39A, r:0 },
-  bloom:  { n:'花花精靈', c:0xF2A0B5, r:0 },
-  moth:   { n:'蛾蛾精靈', c:0xB79BE8, r:1, flying:true },
-  ember:  { n:'燼燼精靈', c:0xF2984A, r:1, glow:true },
-  frost:  { n:'霜霜精靈', c:0xCDEFF5, r:1, glow:true },
-  spark:  { n:'電電精靈', c:0xF2E24E, r:1, flying:true },
-  moon:   { n:'月月精靈', c:0xE8E4D4, r:2, glow:true },
-  aurora: { n:'極光精靈', c:0x9BE8D4, r:2, flying:true, glow:true },
+  leaf:   { n:'葉葉精靈', c:0x8FCB6E, r:0, feature:'leafcap' },   // 頭上頂一片葉子
+  dew:    { n:'露露精靈', c:0x8FCBE6, r:0, feature:'droplet' },   // 頭頂一滴水珠
+  pebble: { n:'石石精靈', c:0xC4A47A, r:0, feature:'rockbumps' },// 背上一排石粒
+  sprout: { n:'芽芽精靈', c:0xBEE39A, r:0, feature:'twinsprout' },// 頭上兩根小嫩芽
+  bloom:  { n:'花花精靈', c:0xF2A0B5, r:0, feature:'petals' },   // 一圈花瓣裙擺
+  moth:   { n:'蛾蛾精靈', c:0xB79BE8, r:1, flying:true, feature:'antennae' },  // 觸角 + 花紋翅膀
+  ember:  { n:'燼燼精靈', c:0xF2984A, r:1, glow:true, feature:'flame' },       // 頭頂小火苗
+  frost:  { n:'霜霜精靈', c:0xCDEFF5, r:1, glow:true, feature:'icespikes' },   // 身上冰刺
+  spark:  { n:'電電精靈', c:0xF2E24E, r:1, flying:true, feature:'bolt' },     // 之字形閃電尾巴
+  moon:   { n:'月月精靈', c:0xE8E4D4, r:2, glow:true, feature:'crescent' },   // 頭頂懸浮弦月
+  aurora: { n:'極光精靈', c:0x9BE8D4, r:2, flying:true, glow:true, feature:'ribbon' }, // 拖曳彩帶
 };
 YY.SPIRIT_ORDER = Object.keys(YY.SPIRITS);
 
@@ -1117,6 +1126,74 @@ YY.buildSpiritMesh = function(speciesId){
   body.scale.set(1, .9, 1); g.add(body);
   [-1, 1].forEach(s => { const eye = M(new THREE.SphereGeometry(.04, 8, 6), INK);
     eye.position.set(s * .09, .05, .21); g.add(eye); });
+
+  /* ---- 每種精靈的專屬外觀特徵 ---- */
+  switch(S.feature){
+    case 'leafcap': {
+      const leaf = M(new THREE.SphereGeometry(.09, 8, 6), 0x5C9A4A);
+      leaf.scale.set(1.3, .3, .8); leaf.position.set(0, .27, 0); leaf.rotation.y = .4;
+      g.add(leaf);
+      break;
+    }
+    case 'droplet': {
+      const drop = M(new THREE.SphereGeometry(.06, 8, 8), 0xCFE9F5, { transparent:true, opacity:.85 });
+      drop.scale.set(.8, 1.3, .8); drop.position.set(0, .32, .02); g.add(drop);
+      break;
+    }
+    case 'rockbumps': {
+      for(let i = 0; i < 3; i++){ const r = M(new THREE.SphereGeometry(.05, 8, 6), 0xA88A5E);
+        r.position.set((i - 1) * .09, .16, -.16); g.add(r); }
+      break;
+    }
+    case 'twinsprout': {
+      [-1, 1].forEach(s => { const sp = M(new THREE.ConeGeometry(.03, .13, 5), 0x6FA25E);
+        sp.position.set(s * .06, .29, 0); sp.rotation.z = s * -.2; g.add(sp); });
+      break;
+    }
+    case 'petals': {
+      for(let i = 0; i < 6; i++){ const a = i / 6 * Math.PI * 2;
+        const p = M(new THREE.SphereGeometry(.06, 8, 6), 0xF7C7D6, { transparent:true, opacity:.9 });
+        p.scale.set(1, .35, 1.3); p.position.set(Math.cos(a) * .2, -.08, Math.sin(a) * .2 * .6 + .05);
+        p.rotation.y = a; g.add(p); }
+      break;
+    }
+    case 'antennae': {
+      [-1, 1].forEach(s => { const a = M(new THREE.CylinderGeometry(.012, .012, .14, 5), INK);
+        a.position.set(s * .06, .28, .06); a.rotation.z = s * -.4; g.add(a);
+        const tip = M(new THREE.SphereGeometry(.02, 6, 6), INK); tip.position.set(s * .1, .34, .1); g.add(tip); });
+      break;
+    }
+    case 'flame': {
+      const flame = M(new THREE.ConeGeometry(.06, .16, 8), 0xF2C14E, { transparent:true, opacity:.9 });
+      flame.position.set(0, .32, 0); g.add(flame);
+      break;
+    }
+    case 'icespikes': {
+      for(let i = 0; i < 4; i++){ const a = i / 4 * Math.PI * 2;
+        const sp = M(new THREE.ConeGeometry(.04, .14, 5), 0xB8E6F0, { transparent:true, opacity:.85 });
+        sp.position.set(Math.cos(a) * .19, .06, Math.sin(a) * .19);
+        sp.rotation.z = Math.cos(a) * -1.2; sp.rotation.x = Math.sin(a) * 1.2; g.add(sp); }
+      break;
+    }
+    case 'bolt': {
+      const bolt = M(new THREE.ConeGeometry(.03, .22, 4), 0xE8D63A);
+      bolt.position.set(0, .1, -.22); bolt.rotation.x = 2.4; bolt.rotation.z = .3; g.add(bolt);
+      break;
+    }
+    case 'crescent': {
+      const moon = M(new THREE.TorusGeometry(.1, .035, 8, 16, Math.PI * 1.3), 0xFFF6D8, { transparent:true, opacity:.95 });
+      moon.position.set(0, .34, 0); moon.rotation.x = Math.PI / 2;
+      g.add(moon);
+      break;
+    }
+    case 'ribbon': {
+      for(let i = 0; i < 3; i++){ const rib = M(new THREE.SphereGeometry(.05, 8, 6),
+        [0xF2A0B5, 0xB79BE8, 0x8FCBE6][i], { transparent:true, opacity:.75 });
+        rib.scale.set(.5, .3, 1.6); rib.position.set(0, .02, -.22 - i * .12); g.add(rib); }
+      break;
+    }
+  }
+
   if(S.flying){
     [-1, 1].forEach(s => { const w = M(new THREE.SphereGeometry(.12, 10, 8), S.c, { transparent:true, opacity:.6 });
       w.scale.set(1, .5, .18); w.position.set(s * .26, .12, -.05); w.rotation.z = s * .5;
@@ -1140,7 +1217,8 @@ function weightedPick(order, table){
 }
 YY.pickSpiritSpecies = () => weightedPick(YY.SPIRIT_ORDER, YY.SPIRITS);
 YY.pickPetSpecies    = () => weightedPick(YY.PET_ORDER, YY.PETS);
-YY.catchChance = r => [.7, .42, .18][r];
+/* 誘捕成功率調低(原本 .7/.42/.18 太容易了),稀有度越高越難抓 */
+YY.catchChance = r => [.4, .22, .09][r];
 
 /* ============================================================
    三、玩家擁有資料的小工具(存檔欄位在 config.js)
@@ -1209,6 +1287,49 @@ YY.FAMILY = {
   },
 };
 YY.FAMILY_ORDER = ['yaya','doudou','meimei','zhuang','mama','baba','nana'];
+
+/* ---------- 家人解鎖條件(各自不同,不再是「等時間到」而已) ----------
+   type 對應到玩家實際累積的數值:
+   - exploreSec  在牙牙森林探索的累積秒數
+   - trust       好感度
+   - catchCount  誘捕成功的累積次數
+   - berryFed    在家餵莓果的累積次數
+   - focusSec    Focus Mode 真的盯著螢幕的累積秒數
+   - gachaDraws  抽扭蛋的累積次數
+   ============================================================ */
+YY.FAMILY_UNLOCK = {
+  doudou: { type:'exploreSec', need:180, label:'森林探索時間', unit:'秒',
+    hint:'常常去牙牙森林探索,弟弟最喜歡愛玩的人了', unlockMsg:'常常往森林跑,芽豆聽說了,好奇跑來找你玩!' },
+  meimei: { type:'trust', need:45, label:'好感度', unit:'',
+    hint:'多摸摸、多餵莓果,好感度提升就會吸引妹妹來', unlockMsg:'芽莓感覺到你跟芽芽感情變好了,也想來抱抱!' },
+  zhuang: { type:'catchCount', need:6, label:'誘捕成功次數', unit:'隻',
+    hint:'在森林裡多誘捕幾隻寵物或精靈,證明你夠可靠', unlockMsg:'芽壯聽說你在森林裡誘捕本領不錯,特地來考考你!' },
+  mama: { type:'berryFed', need:8, label:'在家餵莓果次數', unit:'次',
+    hint:'常常在家餵莓果,媽媽會覺得你把大家照顧得很好', unlockMsg:'芽媽看你把家裡照顧得妥妥貼貼,忍不住來看看!' },
+  baba: { type:'focusSec', need:240, label:'Focus Mode 專注時間', unit:'秒',
+    hint:'開著眼神感應認真 Focus Mode,累積專注時間', unlockMsg:'芽爸很欣賞你的專注力,難得誇獎地出現了!' },
+  nana: { type:'gachaDraws', need:12, label:'抽扭蛋次數', unit:'次',
+    hint:'多抽幾次扭蛋,見多識廣的奶奶自然會來串門子', unlockMsg:'芽奶奶聽你收集了不少扭蛋寶貝,笑咪咪地來看看!' },
+};
+/* 目前這個條件累積到多少了(給家族面板顯示解鎖進度用) */
+YY.familyUnlockValue = function(type){
+  switch(type){
+    case 'exploreSec': return YY.exploreSec || 0;
+    case 'trust':       return YY.trust || 0;
+    case 'catchCount':  return YY.catchCount || 0;
+    case 'berryFed':    return YY.berryFed || 0;
+    case 'focusSec':    return (YY.focus && YY.focus.totalSec) || 0;
+    case 'gachaDraws':  return YY.gachaDraws || 0;
+    default: return 0;
+  }
+};
+YY.familyUnlockProgress = function(id){
+  const U = YY.FAMILY_UNLOCK[id];
+  if(!U) return null;
+  const cur = YY.familyUnlockValue(U.type);
+  const pct = Math.min(100, Math.round(cur / U.need * 100));
+  return Object.assign({ cur:Math.floor(cur), pct }, U);
+};
 
 </script>
 <script>
@@ -2528,6 +2649,7 @@ YY.drawGacha = function(){
   }
   drawing = true;
   YY.tickets--; YY.save(); renderWardrobe();
+  YY.gachaDraws = (YY.gachaDraws || 0) + 1;
 
   /* 決定結果 */
   const roll = Math.random() * 100;
@@ -2686,17 +2808,21 @@ function renderFamily(){
   const body = $('#familyBody');
   if(!$('#family').classList.contains('on')) return;
 
-  let html = `<div class="fintro">家人會不定時「叮咚!」來訪,見過一次就永久認識,
-    之後隨時可以點頭像換人陪你。飾品是全家共用的衣櫃喔。</div><div class="fgrid">`;
+  let html = `<div class="fintro">家人各自有不同的解鎖方式(不是單純等時間到喔),
+    見過一次就永久認識,之後隨時可以點頭像換人陪你。飾品是全家共用的衣櫃喔。</div><div class="fgrid">`;
   for(const id of YY.FAMILY_ORDER){
     const F = YY.FAMILY[id];
     const met = YY.metFamily.includes(id);
     const now = YY.currentChar === id;
     const col = '#' + F.body.toString(16).padStart(6, '0');
+    const prog = (!met && YY.familyUnlockProgress) ? YY.familyUnlockProgress(id) : null;
+    const hint = prog ? `<div class="petbar" style="margin-top:4px;"><i style="width:${prog.pct}%"></i></div>
+        <small>${prog.label} ${prog.cur}/${prog.need}${prog.unit}</small>` : '';
     html += `<div class="fcard ${met ? '' : 'lock'} ${now ? 'now' : ''}" data-id="${id}">
       <div class="dot" style="background:${met ? col : '#DDD'}"></div>
       <b>${met ? F.n : '???'}</b>
-      <small>${met ? F.rel : '還沒來訪'}</small>
+      <small>${met ? F.rel : (prog ? prog.hint : '還沒來訪')}</small>
+      ${hint}
     </div>`;
   }
   body.innerHTML = html + '</div>' + renderPetSection() + renderEggSection()
@@ -2711,6 +2837,10 @@ function renderFamily(){
         return;
       }
       if(id === YY.currentChar) return;
+      if(YY.mode === 'explore'){
+        YY.flash('牙牙森林裡沒辦法換人喔——先走回家才能切換家族成員!', 2800);
+        return;
+      }
       YY.switchCharacter(id, true);
       renderFamily();
     };
@@ -2754,23 +2884,25 @@ function renderPetSection(){
   return html + `</div>`;
 }
 
-/* ---------- 🥚 孵蛋器(森林撿到的蛋在這裡孵成精靈) ---------- */
+/* ---------- 🥚 孵蛋器(森林撿到的蛋在這裡孵化,每顆蛋條件不同) ---------- */
 function renderEggSection(){
   const eggs = YY.eggs || [];
-  let html = `<div class="fintro" style="margin-top:18px;">🥚 <b>孵蛋器</b>——在牙牙森林撿到的蛋放這裡,
-    散步或等待都會加快孵化,孵出來是一隻精靈,會住進你家。</div>`;
+  let html = `<div class="fintro" style="margin-top:18px;">🥚 <b>孵蛋器</b>——在牙牙森林「有機率」撿到蛋帶回來,
+    每顆蛋孵化的條件不太一樣,點開來看看牠需要什麼吧!</div>`;
   if(!eggs.length){
-    html += `<div class="wempty">目前沒有蛋。去森林地上找找看!</div>`;
+    html += `<div class="wempty">目前沒有蛋。去森林地上找找看,運氣好才會有喔!</div>`;
     return html;
   }
   html += `<div class="petlist">`;
   eggs.forEach((egg, i) => {
-    const pct = Math.min(100, Math.round(egg.prog / YY.EGG_HATCH * 100));
+    const C = YY.EGG_COND ? YY.EGG_COND[egg.cond] : null;
+    const pct = Math.min(100, Math.round(egg.prog / egg.need * 100));
+    const tint = '#' + (egg.tint || 0xF5EAD0).toString(16).padStart(6, '0');
     html += `<div class="petrow">
-      <div class="dot" style="background:#F5EAD0">🥚</div>
-      <div class="petinfo"><b>神秘的蛋 #${i + 1}</b>
+      <div class="dot" style="background:${tint}">${C ? C.icon : '🥚'}</div>
+      <div class="petinfo"><b>神秘的蛋 #${i + 1}</b> <em>${C ? C.label : '孵化中'}</em>
         <div class="petbar"><i style="width:${pct}%"></i></div>
-        <small>孵化 ${pct}%</small></div>
+        <small>${C ? C.hint + '・' : ''}${Math.floor(egg.prog)}/${egg.need}${C ? C.unit : ''}(${pct}%)</small></div>
     </div>`;
   });
   return html + `</div>`;
@@ -2837,29 +2969,49 @@ YY.initPanels = function(){
 (function(){
 const $ = s => document.querySelector(s);
 
-/* ---------- ① 家人隨機來訪 ---------- */
-let nextVisit = YY.now() + YY.rand(35000, 70000);
+/* ---------- ① 家人來訪 ----------
+   已認識的家人:偶爾隨機來串門子(單純調劑氣氛,不影響解鎖)
+   還沒認識的家人:各自有專屬的解鎖條件(見 family.js 的 YY.FAMILY_UNLOCK),
+   條件達成才會「叮咚!」來訪並永久解鎖,不再是單純等時間到。
+   在牙牙森林探索時,家不在,所以兩種來訪都先暫停,回家後才會觸發。 */
+let nextVisit = YY.now() + YY.rand(50000, 90000);
 let swapping = false;
+let lastUnlockCheck = 0;
 
 YY.updateVisits = function(t){
   if(swapping || YY.capsule) return;
+  if(YY.mode === 'explore') return;   // #4 人在森林裡,家人不會跑來按門鈴
+
+  checkFamilyUnlocks(t);
+
   if(t < nextVisit) return;
-  nextVisit = t + YY.rand(50000, 110000);
-
-  /* 挑一位不是現任的家人,優先沒見過的 */
-  const others = YY.FAMILY_ORDER.filter(id => id !== YY.currentChar);
-  const fresh  = others.filter(id => !YY.metFamily.includes(id));
-  const pool   = (fresh.length && Math.random() < .75) ? fresh : others;
-  const id = pool[Math.floor(Math.random() * pool.length)];
-
+  nextVisit = t + YY.rand(60000, 130000);
+  /* 只從「已經認識」的家人裡隨機選一位來串門子 */
+  const known = YY.FAMILY_ORDER.filter(id => id !== YY.currentChar && YY.metFamily.includes(id));
+  if(!known.length) return;
+  const id = known[Math.floor(Math.random() * known.length)];
   familyVisit(id);
 };
 
-function familyVisit(id){
+/* 每 2.5 秒檢查一次(不用每幀檢查)哪個還沒解鎖的家人條件已經達成 */
+function checkFamilyUnlocks(t){
+  if(t - lastUnlockCheck < 2500) return;
+  lastUnlockCheck = t;
+  for(const id of YY.FAMILY_ORDER){
+    if(id === 'yaya' || YY.metFamily.includes(id)) continue;
+    const prog = YY.familyUnlockProgress(id);
+    if(prog && prog.pct >= 100){
+      familyVisit(id, prog.unlockMsg);
+      break;   // 一次只解鎖一位
+    }
+  }
+}
+
+function familyVisit(id, unlockMsg){
   swapping = true;
   const F = YY.FAMILY[id];
   YY.sfx.doorbell();
-  YY.flash(`叮咚!是${F.rel}——${F.n} 來玩了!`, 3000);
+  YY.flash(unlockMsg ? `叮咚!${unlockMsg}` : `叮咚!是${F.rel}——${F.n} 來玩了!`, 3400);
 
   const firstTime = !YY.metFamily.includes(id);
 
@@ -2981,6 +3133,9 @@ YY.eatBerry = function(cre){
   cre.squashV = -.32;
   setTimeout(() => YY.spawnHeart(cre.x, 2.0, cre.z), 300);
   YY.bumpTrust(4);                          // 餵食很加分,好感度 +4
+  YY.berryFed = (YY.berryFed || 0) + 1;     // 給芽媽解鎖條件、也順便餵「餵莓果」條件的蛋
+  if(YY.eggProgressBerry) YY.eggProgressBerry();
+  YY.save();
   /* 扭蛋券改成隨機掉落(約一半機率) */
   if(Math.random() < .55){
     YY.addTickets(1, `${cre.def.n}吃得好開心,還回送你一張扭蛋券!`);
@@ -3101,7 +3256,7 @@ YY.enterForest = function(){
   }
   YY.forestCam.fpv = false;
   YY.exploreWalk._lx = cre ? cre.x : 0; YY.exploreWalk._ly = cre ? cre.z : 0;
-  nextSpawnAt = 0; nextEggAt = YY.now() + YY.rand(4000, 9000);
+  nextSpawnAt = 0; nextEggRollAt = YY.now() + YY.rand(4000, 9000);
   if(YY.renderForestHint) YY.renderForestHint();
 };
 YY.leaveForest = function(){
@@ -3142,11 +3297,18 @@ function removeWild(w){
   if(YY.exploreTarget === w.uid) YY.exploreTarget = null;
 }
 
-/* ---------- 蛋:森林裡出現,可撿起 ---------- */
-let nextEggAt = 0;
+/* ---------- 蛋:森林裡「有機率」出現,不是每次都有,可撿起 ---------- */
+let nextEggRollAt = 0;
+function maybeSpawnEgg(t){
+  if(YY.eggGroup.children.length >= 1) return;   // 同時最多 1 顆蛋在地上,比較稀有
+  if(t < nextEggRollAt) return;
+  nextEggRollAt = t + YY.rand(10000, 18000);
+  if(Math.random() < .35) spawnEggOnGround();     // 每次骰只有 35% 機率真的生出蛋
+}
 function spawnEggOnGround(){
   const g = new THREE.Group();
-  const shell = YY.M(new THREE.SphereGeometry(.24, 14, 12), 0xF5EAD0);
+  const tint = [0xF5EAD0, 0xE8D6F0, 0xD6EAF5, 0xF5E0D6, 0xE0F5D9, 0xF5D6E8][Math.floor(Math.random() * 6)];
+  const shell = YY.M(new THREE.SphereGeometry(.24, 14, 12), tint);
   shell.scale.set(1, 1.25, 1); shell.position.y = .26;
   const dot1 = YY.M(new THREE.SphereGeometry(.05, 8, 6), 0xF2A0B5); dot1.position.set(.1, .3, .18);
   const dot2 = YY.M(new THREE.SphereGeometry(.05, 8, 6), 0x8FCBE6); dot2.position.set(-.08, .2, .2);
@@ -3154,7 +3316,7 @@ function spawnEggOnGround(){
   const a = Math.random() * Math.PI * 2, r = YY.rand(2.5, 6);
   g.position.set(Math.cos(a) * r, 0, Math.sin(a) * r - 1);
   const uid = YY.newUid('groundegg');
-  g.userData.eggUid = uid;
+  g.userData.eggUid = uid; g.userData.tint = tint;
   g.traverse(o => { if(o.isMesh){ o.castShadow = true; o.userData.eggUid = uid; } });
   YY.eggGroup.add(g);
 }
@@ -3183,9 +3345,10 @@ YY.handleExploreTap = function(ndcX, ndcY){
     if(eh.length){
       let obj = eh[0].object; while(obj && !obj.userData.eggUid) obj = obj.parent;
       if(obj){
+        const tint = obj.userData.tint;
         YY.eggGroup.remove(obj);
         YY.spawnPuff(obj.position.x, .4, obj.position.z);
-        YY.addEgg();
+        YY.addEgg(tint);
         return;
       }
     }
@@ -3239,6 +3402,7 @@ function resolveCatch(w){
   if(success){
     YY.sfx.tada();
     YY.spawnConfetti(w.x, .6, w.z, info.r === 2 ? 44 : 26);
+    YY.catchCount = (YY.catchCount || 0) + 1;
     if(w.kind === 'pet'){
       const firstTime = !YY.metPets.includes(w.species);
       YY.addPet(w.species);
@@ -3274,8 +3438,8 @@ YY.updateExplore = function(t, dt){
     return;
   }
 
-  if(wild.length < 3 && t > nextSpawnAt){ spawnWild(); nextSpawnAt = t + YY.rand(4500, 10000); }
-  if(YY.eggGroup.children.length < 2 && t > nextEggAt){ spawnEggOnGround(); nextEggAt = t + YY.rand(12000, 24000); }
+  if(wild.length < 2 && t > nextSpawnAt){ spawnWild(); nextSpawnAt = t + YY.rand(6000, 13000); }
+  maybeSpawnEgg(t);
 
   for(const w of wild.slice()){
     const dx = w.tx - w.x, dz = w.tz - w.z, dist = Math.hypot(dx, dz);
@@ -3307,7 +3471,10 @@ YY.updateExplore = function(t, dt){
   /* 蛋在地上輕輕搖 */
   YY.eggGroup.children.forEach((e, i) => { e.rotation.z = Math.sin(t / 400 + i) * .12; });
 
-  /* 散步:累積距離 → 好感度 / 寵物進化 / 蛋孵化 */
+  /* 累積在森林探索的時間(給芽弟解鎖條件用) */
+  YY.exploreSec = (YY.exploreSec || 0) + dt;
+
+  /* 散步:累積距離 → 好感度 / 寵物進化 / 蛋孵化(只有「散步」條件的蛋會前進) */
   const cre = YY.cre;
   if(cre){
     const W = YY.exploreWalk;
@@ -3317,7 +3484,7 @@ YY.updateExplore = function(t, dt){
     W._lx = cre.x; W._ly = cre.z;
     if(step > 0.0005){
       YY.addWalkToActivePet(step);     // #4 帶去散步 → 進化
-      YY.progressEggs(step, dt);       // #6 邊散步邊孵蛋
+      if(YY.eggProgressWalk) YY.eggProgressWalk(step);   // #6 邊散步邊孵蛋(僅限「散步」條件的蛋)
     }
     if(W.dist > W.nextRewardAt){
       W.nextRewardAt = W.dist + YY.rand(18, 30);
@@ -3405,39 +3572,77 @@ YY.updateHomeSpirits = function(t, dt){
 };
 
 /* ---------- 蛋的孵化 ----------
-   撿到蛋 → 放進孵化器,散步累積 or 時間流逝會讓孵化進度前進,滿了就破殼 */
-YY.EGG_HATCH = 100;   // 孵化所需進度
-YY.addEgg = function(){
+   撿到蛋 → 放進孵化器,依「這顆蛋的孵化條件」慢慢前進,滿了就破殼
+   每顆蛋隨機抽到不同的孵化條件(散步 / 專注 / 餵莓果 / 摸摸 / 靜置等待),
+   這樣就不會每顆蛋都只是「等時間到」。 */
+YY.EGG_COND = {
+  walk:  { label:'森林散步距離', unit:'', icon:'🚶', hint:'帶牠去牙牙森林走走路' },
+  focus: { label:'專注時間累積', unit:'秒', icon:'🎯', hint:'開著眼神感應,認真 Focus Mode 一下' },
+  berry: { label:'在家餵食莓果', unit:'次', icon:'🫐', hint:'在房間裡餵牠吃莓果' },
+  pat:   { label:'摸摸互動次數', unit:'次', icon:'✋', hint:'常常點牠、摸摸牠' },
+  time:  { label:'靜靜陪伴時間', unit:'秒', icon:'🕰️', hint:'什麼都不用做,開著遊戲慢慢等' },
+};
+const EGG_COND_ORDER = Object.keys(YY.EGG_COND);
+const EGG_COND_NEED = { walk:[45,80], focus:[70,150], berry:[4,8], pat:[16,30], time:[220,420] };
+const EGG_TINTS = [0xF5EAD0, 0xE8D6F0, 0xD6EAF5, 0xF5E0D6, 0xE0F5D9, 0xF5D6E8];
+
+YY.pickEggCondition = function(){
+  const cond = EGG_COND_ORDER[Math.floor(Math.random() * EGG_COND_ORDER.length)];
+  const [lo, hi] = EGG_COND_NEED[cond];
+  return { cond, need: Math.round(YY.rand(lo, hi)) };
+};
+
+YY.addEgg = function(tint){
   const species = YY.pickSpiritSpecies();      // 蛋裡是哪隻精靈,先藏起來,孵出才知道
-  const egg = { uid: YY.newUid('egg'), sp: species, prog: 0 };
+  const { cond, need } = YY.pickEggCondition();
+  const egg = { uid: YY.newUid('egg'), sp: species, cond, need, prog: 0,
+    tint: tint ?? EGG_TINTS[Math.floor(Math.random() * EGG_TINTS.length)] };
   YY.eggs.push(egg);
   YY.save();
-  YY.flash('🥚 撿到一顆蛋!帶回家會慢慢孵化(散步或等待都會加快),孵出來是一隻精靈!', 4200);
+  const C = YY.EGG_COND[cond];
+  YY.flash(`🥚 撿到一顆蛋!牠好像需要「${C.label}」才會孵化——${C.hint}~`, 4400);
   YY.sfx.pop();
   return egg;
 };
-/* 進度來源:①森林散步(walkUnits)②時間自然孵(dt) */
-YY.progressEggs = function(walkUnits, dt){
-  if(!YY.eggs || !YY.eggs.length) return;
+
+/* 依條件類型分別餵進度,只有符合條件的蛋才會前進 */
+function feedEggs(cond, amount){
+  if(!amount || !YY.eggs || !YY.eggs.length) return;
   let hatched = null;
   for(const egg of YY.eggs){
-    egg.prog += (walkUnits || 0) * 6 + (dt || 0) * 1.4;   // 散步孵得比較快
-    if(egg.prog >= YY.EGG_HATCH){ hatched = egg; break; }
+    if(egg.cond !== cond) continue;
+    egg.prog += amount;
+    if(egg.prog >= egg.need){ hatched = egg; break; }
   }
-  if(hatched){
-    YY.eggs = YY.eggs.filter(e => e !== hatched);
-    const S = YY.SPIRITS[hatched.sp];
-    const firstTime = !YY.metSpirits.includes(hatched.sp);
-    YY.addHomeSpirit(hatched.sp);
-    YY.sfx.tada();
-    if(YY.cre) YY.spawnConfetti(YY.cre.x, 1.6, YY.cre.z, 30);
-    YY.flash(firstTime
-      ? `🐣 蛋孵化了!首次發現「${S.n}」——牠住進你家了!`
-      : `🐣 蛋孵化了!又一隻「${S.n}」住進你家!`, 4200);
-    if(document.getElementById('family') && document.getElementById('family').classList.contains('on') && YY.renderFamily)
-      YY.renderFamily();
-  }
+  if(hatched) hatchEgg(hatched);
+  else YY.save();
+}
+function hatchEgg(egg){
+  YY.eggs = YY.eggs.filter(e => e !== egg);
+  const S = YY.SPIRITS[egg.sp];
+  const firstTime = !YY.metSpirits.includes(egg.sp);
+  YY.addHomeSpirit(egg.sp);
+  YY.sfx.tada();
+  if(YY.cre) YY.spawnConfetti(YY.cre.x, 1.6, YY.cre.z, 30);
+  YY.flash(firstTime
+    ? `🐣 蛋孵化了!首次發現「${S.n}」——牠住進你家了!`
+    : `🐣 蛋孵化了!又一隻「${S.n}」住進你家!`, 4200);
+  if(document.getElementById('family') && document.getElementById('family').classList.contains('on') && YY.renderFamily)
+    YY.renderFamily();
   YY.save();
+}
+
+/* 各種行為個別呼叫,只會餵給對應條件的蛋 */
+YY.eggProgressWalk  = (units) => feedEggs('walk', units);
+YY.eggProgressFocus = (dt)    => feedEggs('focus', dt);
+YY.eggProgressBerry = ()      => feedEggs('berry', 1);
+YY.eggProgressPat   = ()      => feedEggs('pat', 1);
+YY.eggProgressTime  = (dt)    => feedEggs('time', dt);
+
+/* 舊 API 相容(給既有呼叫者):等同散步 + 靜置雙軌餵一次 */
+YY.progressEggs = function(walkUnits, dt){
+  if(walkUnits) YY.eggProgressWalk(walkUnits);
+  if(dt) YY.eggProgressTime(dt);
 };
 })();
 
@@ -4045,6 +4250,8 @@ function pet(){
   YY.sfx.chirp();
   YY.spawnHeart(cre.x, 2.1 * cre.def.size, cre.z, 0xFF7B8E);
   YY.bumpTrust(2);                       // 摸摸會加好感度(順便更新那條進度條)
+  YY.patCount = (YY.patCount || 0) + 1;
+  if(YY.eggProgressPat) YY.eggProgressPat();
   /* 扭蛋券改成「隨機掉落」,不再是摸幾下就一定有 */
   const chance = .14 + (YY.trust / 100) * .12;   // 好感度越高、掉券機率略高(約 14%~26%)
   if(Math.random() < chance){
@@ -4103,6 +4310,7 @@ function loop(){
   YY.updateButterfly(t, dt);
   YY.updateVisits(t);
   YY.updateExplore(t, dt);
+  if(YY.eggProgressTime) YY.eggProgressTime(dt);   // 靜靜等待的蛋,不管在不在森林都會慢慢孵
 
   if(YY.mode === 'explore') YY.updateForestCam(t);
 

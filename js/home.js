@@ -55,38 +55,76 @@ YY.updateHomeSpirits = function(t, dt){
 };
 
 /* ---------- 蛋的孵化 ----------
-   撿到蛋 → 放進孵化器,散步累積 or 時間流逝會讓孵化進度前進,滿了就破殼 */
-YY.EGG_HATCH = 100;   // 孵化所需進度
-YY.addEgg = function(){
+   撿到蛋 → 放進孵化器,依「這顆蛋的孵化條件」慢慢前進,滿了就破殼
+   每顆蛋隨機抽到不同的孵化條件(散步 / 專注 / 餵莓果 / 摸摸 / 靜置等待),
+   這樣就不會每顆蛋都只是「等時間到」。 */
+YY.EGG_COND = {
+  walk:  { label:'森林散步距離', unit:'', icon:'🚶', hint:'帶牠去牙牙森林走走路' },
+  focus: { label:'專注時間累積', unit:'秒', icon:'🎯', hint:'開著眼神感應,認真 Focus Mode 一下' },
+  berry: { label:'在家餵食莓果', unit:'次', icon:'🫐', hint:'在房間裡餵牠吃莓果' },
+  pat:   { label:'摸摸互動次數', unit:'次', icon:'✋', hint:'常常點牠、摸摸牠' },
+  time:  { label:'靜靜陪伴時間', unit:'秒', icon:'🕰️', hint:'什麼都不用做,開著遊戲慢慢等' },
+};
+const EGG_COND_ORDER = Object.keys(YY.EGG_COND);
+const EGG_COND_NEED = { walk:[45,80], focus:[70,150], berry:[4,8], pat:[16,30], time:[220,420] };
+const EGG_TINTS = [0xF5EAD0, 0xE8D6F0, 0xD6EAF5, 0xF5E0D6, 0xE0F5D9, 0xF5D6E8];
+
+YY.pickEggCondition = function(){
+  const cond = EGG_COND_ORDER[Math.floor(Math.random() * EGG_COND_ORDER.length)];
+  const [lo, hi] = EGG_COND_NEED[cond];
+  return { cond, need: Math.round(YY.rand(lo, hi)) };
+};
+
+YY.addEgg = function(tint){
   const species = YY.pickSpiritSpecies();      // 蛋裡是哪隻精靈,先藏起來,孵出才知道
-  const egg = { uid: YY.newUid('egg'), sp: species, prog: 0 };
+  const { cond, need } = YY.pickEggCondition();
+  const egg = { uid: YY.newUid('egg'), sp: species, cond, need, prog: 0,
+    tint: tint ?? EGG_TINTS[Math.floor(Math.random() * EGG_TINTS.length)] };
   YY.eggs.push(egg);
   YY.save();
-  YY.flash('🥚 撿到一顆蛋!帶回家會慢慢孵化(散步或等待都會加快),孵出來是一隻精靈!', 4200);
+  const C = YY.EGG_COND[cond];
+  YY.flash(`🥚 撿到一顆蛋!牠好像需要「${C.label}」才會孵化——${C.hint}~`, 4400);
   YY.sfx.pop();
   return egg;
 };
-/* 進度來源:①森林散步(walkUnits)②時間自然孵(dt) */
-YY.progressEggs = function(walkUnits, dt){
-  if(!YY.eggs || !YY.eggs.length) return;
+
+/* 依條件類型分別餵進度,只有符合條件的蛋才會前進 */
+function feedEggs(cond, amount){
+  if(!amount || !YY.eggs || !YY.eggs.length) return;
   let hatched = null;
   for(const egg of YY.eggs){
-    egg.prog += (walkUnits || 0) * 6 + (dt || 0) * 1.4;   // 散步孵得比較快
-    if(egg.prog >= YY.EGG_HATCH){ hatched = egg; break; }
+    if(egg.cond !== cond) continue;
+    egg.prog += amount;
+    if(egg.prog >= egg.need){ hatched = egg; break; }
   }
-  if(hatched){
-    YY.eggs = YY.eggs.filter(e => e !== hatched);
-    const S = YY.SPIRITS[hatched.sp];
-    const firstTime = !YY.metSpirits.includes(hatched.sp);
-    YY.addHomeSpirit(hatched.sp);
-    YY.sfx.tada();
-    if(YY.cre) YY.spawnConfetti(YY.cre.x, 1.6, YY.cre.z, 30);
-    YY.flash(firstTime
-      ? `🐣 蛋孵化了!首次發現「${S.n}」——牠住進你家了!`
-      : `🐣 蛋孵化了!又一隻「${S.n}」住進你家!`, 4200);
-    if(document.getElementById('family') && document.getElementById('family').classList.contains('on') && YY.renderFamily)
-      YY.renderFamily();
-  }
+  if(hatched) hatchEgg(hatched);
+  else YY.save();
+}
+function hatchEgg(egg){
+  YY.eggs = YY.eggs.filter(e => e !== egg);
+  const S = YY.SPIRITS[egg.sp];
+  const firstTime = !YY.metSpirits.includes(egg.sp);
+  YY.addHomeSpirit(egg.sp);
+  YY.sfx.tada();
+  if(YY.cre) YY.spawnConfetti(YY.cre.x, 1.6, YY.cre.z, 30);
+  YY.flash(firstTime
+    ? `🐣 蛋孵化了!首次發現「${S.n}」——牠住進你家了!`
+    : `🐣 蛋孵化了!又一隻「${S.n}」住進你家!`, 4200);
+  if(document.getElementById('family') && document.getElementById('family').classList.contains('on') && YY.renderFamily)
+    YY.renderFamily();
   YY.save();
+}
+
+/* 各種行為個別呼叫,只會餵給對應條件的蛋 */
+YY.eggProgressWalk  = (units) => feedEggs('walk', units);
+YY.eggProgressFocus = (dt)    => feedEggs('focus', dt);
+YY.eggProgressBerry = ()      => feedEggs('berry', 1);
+YY.eggProgressPat   = ()      => feedEggs('pat', 1);
+YY.eggProgressTime  = (dt)    => feedEggs('time', dt);
+
+/* 舊 API 相容(給既有呼叫者):等同散步 + 靜置雙軌餵一次 */
+YY.progressEggs = function(walkUnits, dt){
+  if(walkUnits) YY.eggProgressWalk(walkUnits);
+  if(dt) YY.eggProgressTime(dt);
 };
 })();
