@@ -1,92 +1,57 @@
 /* ============================================================
-   companion.js — 每一位牙寶都有自己的專屬小寵物
-   外型/顏色依角色本身的配色決定,會跟在角色旁邊晃來晃去
+   companion.js — 跟隨主人的「當前寵物」
+   #2 寵物才能跟隨主人:玩家選定的 activePet 會跟在牙寶旁邊,
+      不論在房間還是森林都跟著;精靈則只待在家(見 home.js)
+   #4 帶去散步會進化:stage 由 walks 決定,外觀會跟著長大
    ============================================================ */
 (function(){
-const SHAPES = ['bunny', 'bird', 'fish', 'chick', 'snail'];
 
-/* 用角色 id 決定固定的寵物外型(同一位角色每次都是同一隻寵物) */
-function shapeFor(id){
-  let h = 0;
-  for(let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return SHAPES[h % SHAPES.length];
-}
-const SHAPE_NAME = { bunny:'兔兔精靈', bird:'小鳥精靈', fish:'小魚精靈', chick:'雛鳥精靈', snail:'蝸牛精靈' };
+let comp = null;   // { mesh, x, z, bobT, uid, stage }
 
-function buildCompanionMesh(id){
-  const F = YY.FAMILY[id];
-  const shape = shapeFor(id);
-  const c = F.blush;   // 用角色自己的腮紅色當寵物主色,天生就是一對
-  const g = new THREE.Group();
-
-  const body = YY.M(new THREE.SphereGeometry(.2, 14, 10), c);
-  body.scale.set(1, .92, 1);
-  g.add(body);
-
-  if(shape === 'bunny'){
-    [-1, 1].forEach(s => {
-      const ear = YY.M(new THREE.SphereGeometry(.06, 8, 6), c);
-      ear.scale.set(.55, 1.7, .5);
-      ear.position.set(s * .09, .3, -.02);
-      g.add(ear);
-    });
-  } else if(shape === 'bird'){
-    const beak = YY.M(new THREE.SphereGeometry(.05, 8, 6), 0xF2C14E);
-    beak.scale.set(1, .6, 1.4);
-    beak.position.set(0, -.02, .2);
-    g.add(beak);
-    [-1, 1].forEach(s => {
-      const wing = YY.M(new THREE.SphereGeometry(.1, 10, 8), c, { transparent:true, opacity:.92 });
-      wing.scale.set(.4, 1, .9);
-      wing.position.set(s * .19, .02, -.02);
-      wing.userData.flap = { side: s };
-      g.add(wing);
-    });
-  } else if(shape === 'fish'){
-    const tail = YY.M(new THREE.SphereGeometry(.09, 8, 6), c);
-    tail.scale.set(.4, 1, 1.6);
-    tail.position.set(0, 0, -.24);
-    g.add(tail);
-  } else if(shape === 'chick'){
-    const tuft = YY.M(new THREE.SphereGeometry(.04, 6, 6), 0xF2C14E);
-    tuft.position.set(0, .24, .06);
-    g.add(tuft);
-    const beak = YY.M(new THREE.SphereGeometry(.04, 6, 6), 0xF2C14E);
-    beak.scale.set(1, .7, 1.3); beak.position.set(0, -.02, .19);
-    g.add(beak);
-  } else if(shape === 'snail'){
-    const shell = YY.M(new THREE.SphereGeometry(.13, 10, 8), c);
-    shell.position.set(0, .13, -.1);
-    g.add(shell);
-  }
-
-  [-1, 1].forEach(s => {
-    const eye = YY.M(new THREE.SphereGeometry(.032, 8, 6), 0x2C4034);
-    eye.position.set(s * .08, .04, .18);
-    g.add(eye);
-  });
-
-  g.userData.shape = shape;
-  g.traverse(o => { if(o.isMesh) o.castShadow = true; });
-  return g;
-}
-
-/* ---------- 目前的寵物 ---------- */
-let comp = null;
-YY.buildCompanionFor = function(id){
+/* 依 activePet 重新建立跟隨寵物(換寵物 / 進化後呼叫) */
+YY.refreshActivePet = function(){
   if(comp && comp.mesh){ YY.scene.remove(comp.mesh); comp = null; }
+  const pet = YY.getPet(YY.activePet);
+  if(!pet) return;                 // 還沒有寵物 → 沒有跟隨者
+  const stage = YY.petStage(pet);
+  const mesh = YY.buildPetMesh(pet.sp, stage);
   const cre = YY.cre;
-  const mesh = buildCompanionMesh(id);
   const x = (cre ? cre.x : 0) - .9, z = (cre ? cre.z : 1.2) + .55;
   mesh.position.set(x, .2, z);
   YY.scene.add(mesh);
-  comp = { mesh, x, z, bobT: Math.random() * 10, id };
-};
-YY.companionName = function(id){
-  return SHAPE_NAME[shapeFor(id)] || '小精靈';
+  comp = { mesh, x, z, bobT: Math.random() * 10, uid: pet.uid, stage };
 };
 
-/* ---------- 每幀跟著主角晃 ---------- */
+/* 兼容舊呼叫:切換角色時仍會叫 buildCompanionFor,轉呼叫 refreshActivePet */
+YY.buildCompanionFor = function(){ YY.refreshActivePet(); };
+
+YY.companionName = function(){
+  const pet = YY.getPet(YY.activePet);
+  return pet ? YY.petDisplayName(pet) : '小寵物';
+};
+
+/* 累積散步距離 → 進化(森林裡由 explore.js 呼叫) */
+YY.addWalkToActivePet = function(units){
+  const pet = YY.getPet(YY.activePet);
+  if(!pet) return;
+  const before = YY.petStage(pet);
+  pet.walks = (pet.walks || 0) + units;
+  const after = YY.petStage(pet);
+  if(after > before){
+    YY.save();
+    YY.refreshActivePet();
+    YY.sfx.tada();
+    if(YY.cre) YY.spawnConfetti(comp ? comp.x : YY.cre.x, 1.4, comp ? comp.z : YY.cre.z, 30);
+    const petName = (YY.PETS[pet.sp] && YY.PETS[pet.sp].n) || '小寵物';
+    YY.flash(`✨ 進化!「${petName}」升級成【${YY.STAGE_TITLE[after]}】了!常帶牠散步果然有用~`, 4600);
+    if(document.getElementById('family') && document.getElementById('family').classList.contains('on') && YY.renderFamily)
+      YY.renderFamily();
+  } else {
+    YY.save();
+  }
+};
+
+/* ---------- 每幀:跟在主人旁邊晃 ---------- */
 YY.updateCompanion = function(dt, t){
   if(!comp || !YY.cre) return;
   const cre = YY.cre;
@@ -95,7 +60,7 @@ YY.updateCompanion = function(dt, t){
   const dx = tx - comp.x, dz = tz - comp.z;
   const dist = Math.hypot(dx, dz);
   if(dist > .05){
-    const sp = 1.5 * dt;
+    const sp = 1.8 * dt;
     comp.x += dx / dist * Math.min(sp, dist);
     comp.z += dz / dist * Math.min(sp, dist);
     comp.mesh.rotation.y += (Math.atan2(dx, dz) - comp.mesh.rotation.y) * .08;
@@ -104,10 +69,10 @@ YY.updateCompanion = function(dt, t){
   const hop = Math.abs(Math.sin(comp.bobT)) * .075;
   comp.mesh.position.set(comp.x, .2 + hop, comp.z);
   comp.mesh.children.forEach(ch => {
-    if(ch.userData.flap){
-      const f = Math.sin(t / 90) * .35;
-      ch.rotation.z = ch.userData.flap.side * (.4 + f);
-    }
+    if(ch.userData.flap){ const f = Math.sin(t / 90) * .35; ch.rotation.z = ch.userData.flap.side * (.4 + f); }
+    const ob = ch.userData.orbit;
+    if(ob){ ob.a += dt * 1.8; ch.position.set(Math.cos(ob.a) * ob.r, .18 + Math.sin(ob.a * 2) * ob.h, Math.sin(ob.a) * ob.r); }
+    if(ch.userData.glow) ch.material.opacity = .14 + Math.sin(t / 420) * .07;
   });
 };
 })();

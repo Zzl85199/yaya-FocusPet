@@ -21,6 +21,11 @@ YY.initWorld = function(){
   scene.fog = new THREE.Fog(P.bg, 26, 46);   // 霧往後推,畫面更透亮不糊
   YY.scene = scene;
 
+  /* 房間裡的東西全部收進 roomGroup,進森林時整組隱藏(燈光留在 scene 照亮兩邊) */
+  const room = new THREE.Group();
+  scene.add(room);
+  YY.roomGroup = room;
+
   const camera = new THREE.PerspectiveCamera(46, innerWidth / innerHeight, .1, 60);
   YY.camera = camera;
   YY.cam = { theta:.35, phi:1.12, radius:10.5, target:new THREE.Vector3(0, 1.5, 0) };
@@ -45,39 +50,44 @@ YY.initWorld = function(){
   const floor = new THREE.Mesh(new THREE.CylinderGeometry(11, 11, .3, 48), mat(P.floor));
   floor.position.y = -.15;
   floor.receiveShadow = true;
-  scene.add(floor);
+  room.add(floor);
   YY.floor = floor;
 
   const rug = new THREE.Mesh(new THREE.CylinderGeometry(3.4, 3.4, .05, 40), mat(P.rug));
   rug.position.y = .03; rug.receiveShadow = true;
-  scene.add(rug);
+  room.add(rug);
   const rugRim = new THREE.Mesh(new THREE.TorusGeometry(3.4, .06, 8, 44), mat(0xE8C97A));
   rugRim.rotation.x = Math.PI / 2; rugRim.position.y = .06;
-  scene.add(rugRim);
+  room.add(rugRim);
 
   const wallMat = mat(P.wall, { side:THREE.DoubleSide });
   const wall1 = new THREE.Mesh(new THREE.PlaneGeometry(22, 9), wallMat);
   wall1.position.set(0, 4.5, -10.5);
   const wall2 = new THREE.Mesh(new THREE.PlaneGeometry(22, 9), wallMat);
   wall2.rotation.y = Math.PI / 2; wall2.position.set(-10.5, 4.5, 0);
-  scene.add(wall1, wall2);
+  room.add(wall1, wall2);
   const skirt1 = new THREE.Mesh(new THREE.BoxGeometry(22, .5, .18), mat(0xE2DCC6));
-  skirt1.position.set(0, .25, -10.42); scene.add(skirt1);
+  skirt1.position.set(0, .25, -10.42); room.add(skirt1);
   const skirt2 = skirt1.clone(); skirt2.rotation.y = Math.PI / 2; skirt2.position.set(-10.42, .25, 0);
-  scene.add(skirt2);
+  room.add(skirt2);
+
+  /* ---------- 通往牙牙森林的門(#1:點門就走出房間到森林) ---------- */
+  YY.roomDoor = buildDoor();
+  YY.roomDoor.position.set(-4.2, 0, -10.32);
+  room.add(YY.roomDoor);
 
   /* 窗戶(牆上一塊暖光) */
   const win = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 3.0),
     mat(0xF5E4B0, { emissive:0xF2DA96, emissiveIntensity:.3 }));
   win.position.set(3.2, 4.6, -10.44);
-  scene.add(win);
+  room.add(win);
   const frame = new THREE.Mesh(new THREE.BoxGeometry(3.7, .16, .1), mat(P.ink));
   const f1 = frame.clone(); f1.position.set(3.2, 6.15, -10.4);
   const f2 = frame.clone(); f2.position.set(3.2, 3.05, -10.4);
   const f3 = frame.clone(); f3.position.set(3.2, 4.6, -10.4);
   const f4 = new THREE.Mesh(new THREE.BoxGeometry(.16, 3.2, .1), mat(P.ink)); f4.position.set(3.2, 4.6, -10.4);
   const f5 = f4.clone(); f5.position.x = 1.4;  const f6 = f4.clone(); f6.position.x = 5.0;
-  scene.add(f1, f2, f3, f4, f5, f6);
+  room.add(f1, f2, f3, f4, f5, f6);
 
   /* ---------- 盆栽(芽芽的躲藏點) ---------- */
   const plant = new THREE.Group();
@@ -98,16 +108,16 @@ YY.initWorld = function(){
     plant.add(leaf);
   }
   plant.position.set(-4.6, 0, -3.2);
-  scene.add(plant);
+  room.add(plant);
 
   /* ---------- 扭蛋機(本專案的招牌!) ---------- */
   YY.machine = buildMachine();
   YY.machine.position.set(4.4, 0, -2.6);
   YY.machine.rotation.y = -.5;
-  scene.add(YY.machine);
+  room.add(YY.machine);
 
   /* ---------- 會被互動的小道具:積木塔 / 豆袋 / 紙箱 ---------- */
-  buildProps(scene);
+  buildProps(room);
 
   /* ---------- 躲藏點(好感度低時會躲去這些地方偷看你) ---------- */
   YY.hideSpots = [
@@ -123,7 +133,28 @@ YY.initWorld = function(){
     camera.updateProjectionMatrix();
     renderer.setSize(innerWidth, innerHeight);
   });
+
+  /* 房間蓋好後,順手把森林也蓋起來(先隱藏) */
+  if(YY.initForest) YY.initForest();
 };
+
+/* ---------- 通往森林的門 ---------- */
+function buildDoor(){
+  const g = new THREE.Group();
+  const jamb = mat(0x8A5A3A);
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(1.7, 3.1, .2), jamb);
+  frame.position.y = 1.55; g.add(frame);
+  const panel = new THREE.Mesh(new THREE.BoxGeometry(1.35, 2.75, .12), mat(0xC98A5A));
+  panel.position.set(0, 1.42, .1); g.add(panel);
+  const knob = new THREE.Mesh(new THREE.SphereGeometry(.09, 10, 8), mat(0xF2C14E));
+  knob.position.set(.5, 1.4, .2); g.add(knob);
+  /* 門上小牌子:牙牙森林 */
+  const sign = new THREE.Mesh(new THREE.BoxGeometry(1.4, .5, .08), mat(0x6FA25E));
+  sign.position.set(0, 3.05, .12); g.add(sign);
+  g.userData.isDoor = true;
+  g.traverse(o => { if(o.isMesh){ o.castShadow = true; o.userData.isDoor = true; } });
+  return g;
+}
 
 function buildMachine(){
   const g = new THREE.Group();

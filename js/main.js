@@ -30,6 +30,8 @@ YY.initPanels();
 YY.initBerry();
 YY.initToyBall();
 YY.initVision();
+if(YY.rebuildHomeSpirits) YY.rebuildHomeSpirits();
+if(YY.refreshActivePet) YY.refreshActivePet();
 $('#trustFill').style.width = YY.trust + '%';
 
 function renderModeUI(){
@@ -51,14 +53,26 @@ function renderModeUI(){
   });
   const berryBtn = $('#btnBerry');
   berryBtn.textContent = YY.mode === 'explore' ? '🫐 誘捕' : '🫐 餵莓果';
+  const eyeBtn = $('#btnEye');
+  if(eyeBtn){
+    if(YY.mode === 'explore'){
+      eyeBtn.textContent = YY.forestCam && YY.forestCam.fpv ? '🐾 牙牙視角' : '🐾 切視角';
+      eyeBtn.classList.toggle('live', !!(YY.forestCam && YY.forestCam.fpv));
+    } else if(YY.renderEyeBtnDefault){
+      YY.renderEyeBtnDefault();
+    }
+  }
 }
-YY.onModeChange = function(m){
+YY.renderForestHint = renderModeUI;
+YY.onModeChange = function(m, prev){
   renderModeUI();
+  if(prev === 'explore' && m !== 'explore'){ YY.leaveForest(); }
   if(m === 'focus'){
     YY.flash('進入 Focus Mode!互動模式的功能先鎖起來,專心感受牠陪你的樣子', 3400);
     if(YY.setPiP) YY.setPiP(true);
   } else if(m === 'explore'){
-    YY.flash('🌲 進入牙牙森林!點地板散步、點精靈選中牠、按「🫐 誘捕」丟莓果引誘', 4200);
+    YY.enterForest();
+    YY.flash('🌲 走出房間門,來到牙牙森林!點地板散步、點精靈/寵物選中牠、按「🫐 誘捕」丟莓果,還能撿蛋帶回家孵化', 5200);
     if(YY.setPiP) YY.setPiP(false);
   } else if(YY.setPiP){
     YY.setPiP(false);
@@ -90,8 +104,9 @@ function setPtr(e){
 function hitTest(){
   ray.setFromCamera(ptr, YY.camera);
   const creHit = ray.intersectObject(YY.cre.root, true).length > 0;
-  const macHit = ray.intersectObject(YY.machine, true).length > 0;
-  return { creHit, macHit };
+  const macHit = YY.machine ? ray.intersectObject(YY.machine, true).length > 0 : false;
+  const doorHit = YY.roomDoor ? ray.intersectObject(YY.roomDoor, true).length > 0 : false;
+  return { creHit, macHit, doorHit };
 }
 
 dom.addEventListener('pointerdown', e => {
@@ -118,13 +133,19 @@ dom.addEventListener('pointermove', e => {
   if(pointers.size === 2){
     const [a, b] = [...pointers.values()];
     const d = Math.hypot(a.x - b.x, a.y - b.y);
-    YY.cam.radius *= pinchD / Math.max(1, d);
+    if(YY.mode === 'explore'){ YY.forestCam.tpRadius *= pinchD / Math.max(1, d); }
+    else { YY.cam.radius *= pinchD / Math.max(1, d); YY.updateCam(); }
     pinchD = d;
-    YY.updateCam();
     return;
   }
   if(!dragging) return;
   moved += Math.abs(dx) + Math.abs(dy);
+  if(YY.mode === 'explore'){
+    const F = YY.forestCam;
+    if(F.fpv){ F.yaw -= dx * .006; }                       // 第一人稱:左右張望
+    else { F.tpTheta -= dx * .0055; F.tpPhi -= dy * .004; } // 第三人稱:繞著牠轉
+    return;
+  }
   YY.cam.theta -= dx * .0055;
   YY.cam.phi   -= dy * .004;
   YY.updateCam();
@@ -141,8 +162,12 @@ dom.addEventListener('pointerup', e => {
       YY.handleExploreTap(ptr.x, ptr.y);
       return;
     }
-    const { creHit, macHit } = hitTest();
-    if(creHit) pet();
+    const { creHit, macHit, doorHit } = hitTest();
+    if(doorHit){
+      if(YY.canEnterMode('explore')) YY.setMode('explore');
+      else YY.flash('Focus Mode 進行中,請先關閉才能出門', 2600);
+    }
+    else if(creHit) pet();
     else if(macHit) YY.drawGacha();
   }
 });
@@ -153,6 +178,7 @@ document.addEventListener('visibilitychange', () => {
   else { YY.mouse.lastMove = YY.now(); YY.mouse.inside = true; }
 });
 dom.addEventListener('wheel', e => {
+  if(YY.mode === 'explore'){ YY.forestCam.tpRadius *= 1 + Math.sign(e.deltaY) * .08; return; }
   YY.cam.radius *= 1 + Math.sign(e.deltaY) * .08;
   YY.updateCam();
 }, { passive:true });
@@ -215,13 +241,18 @@ function loop(){
   YY.updatePiP(t);
   YY.updateCreature(YY.cre, dt, t);
   YY.updateCompanion(dt, t);
-  YY.updateSelfPlay(t, dt);
+  YY.updateHomeSpirits(t, dt);
+  if(YY.mode !== 'explore'){
+    YY.updateSelfPlay(t, dt);
+    updateWander(t);
+  }
   YY.updateCapsule(dt);
   YY.updateParticles(dt);
   YY.updateButterfly(t, dt);
   YY.updateVisits(t);
   YY.updateExplore(t, dt);
-  updateWander(t);
+
+  if(YY.mode === 'explore') YY.updateForestCam(t);
 
   /* 扭蛋機搖晃 */
   const m = YY.machine;

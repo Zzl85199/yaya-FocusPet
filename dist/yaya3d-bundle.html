@@ -196,6 +196,27 @@ header p{margin-top:8px; font-size:13px; color:var(--ink-soft); font-weight:700;
   #camPreview{ width:84px; height:63px; right:10px; bottom:74px; }
 }
 
+/* ---------- 我的寵物 / 孵蛋器 清單 ---------- */
+.petlist{display:flex; flex-direction:column; gap:10px; margin-top:4px;}
+.petrow{display:flex; align-items:center; gap:11px; border:3px solid var(--ink); border-radius:16px;
+  padding:10px 12px; background:#FBFAF3; box-shadow:0 3px 0 rgba(44,64,52,.12);}
+.petrow.on{background:#EAF3DF; outline:3px dashed rgba(111,162,94,.55); outline-offset:2px;}
+.petrow .dot{width:40px; height:40px; border-radius:50%; border:3px solid var(--ink);
+  flex:none; display:grid; place-items:center; font-size:20px;}
+.petinfo{flex:1; min-width:0;}
+.petinfo b{font-size:15px; font-weight:800;}
+.petinfo em{font-style:normal; font-size:11.5px; font-weight:800; color:var(--leaf);
+  border:2px solid var(--leaf); border-radius:999px; padding:0 7px; margin-left:5px;}
+.petinfo small{display:block; margin-top:3px; font-size:11px; color:var(--ink-soft); font-weight:700;}
+.petbar{margin-top:5px; height:9px; border:2px solid var(--ink); border-radius:7px;
+  background:#F3F0E4; overflow:hidden;}
+.petbar i{display:block; height:100%; background:linear-gradient(90deg,#A9CE8F,var(--leaf)); border-radius:5px;}
+.petmax{display:inline-block; margin-top:4px; font-size:12px; font-weight:800; color:var(--r-legend);}
+.petrow > button{font-family:inherit; font-weight:800; font-size:13px; color:var(--ink);
+  border:2.5px solid var(--ink); border-radius:999px; padding:7px 12px; cursor:pointer;
+  background:#F3F0E4; flex:none;}
+.petrow > button.on{background:var(--leaf); color:#FFF;}
+
 </style>
 </head>
 <body>
@@ -292,8 +313,8 @@ YY.clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 YY.now   = () => performance.now();
 
 /* ---------- 好感度分級(決定牠怎麼跟你互動) ---------- */
-YY.TRUST_WARM  = 30;   // 到這裡就沒那麼怕你了
-YY.TRUST_CLOSE = 62;   // 到這裡會超黏你
+YY.TRUST_WARM  = 35;   // 到這裡就沒那麼怕你了
+YY.TRUST_CLOSE = 70;   // 到這裡會超黏你
 YY.trustTier = function(){
   const v = YY.trust || 0;
   return v < YY.TRUST_WARM ? 'shy' : v < YY.TRUST_CLOSE ? 'warm' : 'close';
@@ -359,6 +380,8 @@ YY.save = function(){
       t: YY.tickets, o: YY.owned, w: YY.wear,
       f: YY.metFamily, cur: YY.currentChar, tr: Math.round(YY.trust),
       v: YY.metVariants, sp: YY.metSpirits,
+      op: YY.ownedPets, ap: YY.activePet, hs: YY.homeSpirits,
+      eg: YY.eggs, mp: YY.metPets,
     }));
   }catch(e){}
 };
@@ -367,17 +390,33 @@ YY.load = function(){
   YY.wear = { head:null, face:null, neck:null, back:null, aura:null };
   YY.metFamily = ['yaya']; YY.currentChar = 'yaya'; YY.trust = 12;
   YY.metVariants = []; YY.metSpirits = [];
+  YY.ownedPets = []; YY.activePet = null; YY.homeSpirits = [];
+  YY.eggs = []; YY.metPets = [];
+  let fresh = true;
   try{
     const g = JSON.parse(localStorage.getItem('yy3d') || 'null');
     if(g){
+      fresh = false;
       YY.tickets = g.t ?? 6; YY.owned = g.o || [];
       YY.wear = Object.assign(YY.wear, g.w || {});
       YY.metFamily = g.f || ['yaya']; YY.currentChar = g.cur || 'yaya';
       YY.trust = g.tr ?? 12;
       YY.metVariants = g.v || [];
       YY.metSpirits = g.sp || [];
+      YY.ownedPets = g.op || [];
+      YY.activePet = g.ap ?? null;
+      YY.homeSpirits = g.hs || [];
+      YY.eggs = g.eg || [];
+      YY.metPets = g.mp || [];
     }
   }catch(e){}
+  /* 第一次玩:送一隻起始寵物,讓牙寶一開始就有夥伴陪 */
+  if(fresh && YY.PETS){
+    const starter = { uid:'pet_starter', sp:'cottonbun', walks:0 };
+    YY.ownedPets = [starter];
+    YY.activePet = starter.uid;
+    YY.metPets = ['cottonbun'];
+  }
 };
 
 /* ---------- 提示泡泡 ---------- */
@@ -917,6 +956,225 @@ YY.buildItem = function(id){
 </script>
 <script>
 /* ============================================================
+   beings.js — 寵物(會跟隨)與 精靈(只待在家)的資料與 3D 建模
+   #2 讓寵物 / 精靈的種類與造型更多樣化
+   寵物 PETS:在牙牙森林用莓果誘捕 → 會跟著主人到處走、帶去散步會進化
+   精靈 SPIRITS:在森林誘捕 或 撿蛋孵化 → 只會待在家(房間裡)閒晃
+   ============================================================ */
+(function(){
+const M = YY.M, mat = YY.mat;
+const INK = 0x2C4034;
+
+/* ============================================================
+   一、寵物 PETS(會跟隨主人)
+   base = 造型;c = 主色;r = 稀有度(0 普通 / 1 稀有 / 2 傳說)
+   ============================================================ */
+YY.PETS = {
+  cottonbun: { n:'棉花兔',   base:'bunny',    c:0xF4C9D6, r:0 },
+  pip:       { n:'啾啾鳥',   base:'bird',     c:0x8FCBE6, r:0 },
+  bubble:    { n:'泡泡魚',   base:'fish',     c:0x7FB8E0, r:0 },
+  fluff:     { n:'絨絨雞',   base:'chick',    c:0xF2D66A, r:0 },
+  slowpoke:  { n:'慢慢蝸',   base:'snail',    c:0xC7B18F, r:0 },
+  mochi:     { n:'麻糬貓',   base:'cat',      c:0xF3E4CE, r:0 },
+  hoppy:     { n:'呱呱蛙',   base:'frog',     c:0x8FCB7E, r:0 },
+  toffee:    { n:'太妃犬',   base:'puppy',    c:0xE0B072, r:1 },
+  spike:     { n:'栗子蝟',   base:'hedgehog', c:0xB98A5A, r:1 },
+  paddle:    { n:'搖搖鴨',   base:'duck',     c:0xF2C14E, r:1 },
+  ember:     { n:'火尾狐',   base:'fox',      c:0xE8814A, r:1 },
+  starcat:   { n:'星辰貓',   base:'cat',      c:0x9B7FD4, r:2 },
+  crystalfox:{ n:'晶耀狐',   base:'fox',      c:0x7FE0D0, r:2 },
+};
+YY.PET_ORDER = Object.keys(YY.PETS);
+
+/* 帶去散步累積的距離門檻:0→1 需 24,1→2 再 40(共 64) */
+YY.PET_EVOLVE = [24, 64];
+YY.STAGE_TITLE = ['幼生', '成長', '完全體'];
+YY.petStage = function(pet){
+  const w = pet.walks || 0;
+  if(w >= YY.PET_EVOLVE[1]) return 2;
+  if(w >= YY.PET_EVOLVE[0]) return 1;
+  return 0;
+};
+YY.petStageProgress = function(pet){
+  const st = YY.petStage(pet), w = pet.walks || 0;
+  if(st >= 2) return { st, pct:100, need:0, max:1 };
+  const lo = st === 0 ? 0 : YY.PET_EVOLVE[0];
+  const hi = YY.PET_EVOLVE[st];
+  return { st, pct: Math.round((w - lo) / (hi - lo) * 100), need: Math.ceil(hi - w), max: hi - lo };
+};
+YY.petDisplayName = function(pet){
+  const P = YY.PETS[pet.sp]; if(!P) return '小寵物';
+  return P.n + '（' + YY.STAGE_TITLE[YY.petStage(pet)] + '）';
+};
+
+/* ---------- 寵物造型:各種小動物,依 stage 逐漸長大 + 多長點特徵 ---------- */
+function petShape(g, base, c){
+  const body = M(new THREE.SphereGeometry(.2, 14, 10), c);
+  body.scale.set(1, .92, 1);
+  g.add(body);
+
+  if(base === 'bunny'){
+    [-1, 1].forEach(s => { const e = M(new THREE.SphereGeometry(.06, 8, 6), c);
+      e.scale.set(.55, 1.7, .5); e.position.set(s * .09, .3, -.02); g.add(e); });
+  } else if(base === 'bird'){
+    const beak = M(new THREE.SphereGeometry(.05, 8, 6), 0xF2C14E);
+    beak.scale.set(1, .6, 1.4); beak.position.set(0, -.02, .2); g.add(beak);
+    [-1, 1].forEach(s => { const w = M(new THREE.SphereGeometry(.1, 10, 8), c, { transparent:true, opacity:.92 });
+      w.scale.set(.4, 1, .9); w.position.set(s * .19, .02, -.02); w.userData.flap = { side:s }; g.add(w); });
+  } else if(base === 'fish'){
+    const tail = M(new THREE.SphereGeometry(.09, 8, 6), c);
+    tail.scale.set(.4, 1, 1.6); tail.position.set(0, 0, -.24); g.add(tail);
+    const fin = M(new THREE.SphereGeometry(.07, 8, 6), c, { transparent:true, opacity:.8 });
+    fin.scale.set(.3, 1.2, .7); fin.position.set(0, .18, 0); g.add(fin);
+  } else if(base === 'chick'){
+    const tuft = M(new THREE.SphereGeometry(.04, 6, 6), 0xF2C14E); tuft.position.set(0, .24, .06); g.add(tuft);
+    const beak = M(new THREE.SphereGeometry(.04, 6, 6), 0xF2984A); beak.scale.set(1, .7, 1.3); beak.position.set(0, -.02, .19); g.add(beak);
+  } else if(base === 'snail'){
+    const shell = M(new THREE.SphereGeometry(.13, 10, 8), c); shell.position.set(0, .13, -.1); g.add(shell);
+    const swirl = M(new THREE.TorusGeometry(.08, .02, 6, 14), 0xFFFFFF); swirl.position.set(0, .13, -.02); g.add(swirl);
+    [-1, 1].forEach(s => { const h = M(new THREE.SphereGeometry(.02, 6, 6), c);
+      h.position.set(s * .05, .22, .12); g.add(h); });
+  } else if(base === 'cat'){
+    [-1, 1].forEach(s => { const ear = M(new THREE.ConeGeometry(.06, .12, 4), c);
+      ear.position.set(s * .1, .24, 0); g.add(ear); });
+    const tail = M(new THREE.SphereGeometry(.05, 8, 6), c); tail.scale.set(1, 1, 2.4); tail.position.set(.14, .12, -.18); g.add(tail);
+  } else if(base === 'frog'){
+    [-1, 1].forEach(s => { const bump = M(new THREE.SphereGeometry(.06, 8, 6), c);
+      bump.position.set(s * .09, .17, .04); g.add(bump);
+      const eye = M(new THREE.SphereGeometry(.03, 6, 6), 0xFFFFFF); eye.position.set(s * .09, .19, .09); g.add(eye); });
+  } else if(base === 'puppy'){
+    [-1, 1].forEach(s => { const ear = M(new THREE.SphereGeometry(.06, 8, 6), 0x9A6A3E);
+      ear.scale.set(.6, 1.3, .5); ear.position.set(s * .17, .06, -.02); g.add(ear); });
+    const snout = M(new THREE.SphereGeometry(.06, 8, 6), c); snout.position.set(0, -.04, .18); g.add(snout);
+  } else if(base === 'hedgehog'){
+    for(let i = 0; i < 10; i++){ const sp = M(new THREE.ConeGeometry(.03, .12, 4), 0x6A4A2E);
+      const a = i / 10 * Math.PI * 2; sp.position.set(Math.cos(a) * .12, .12 + Math.sin(a) * .06, -.05 + Math.sin(a) * .12);
+      sp.rotation.x = -1.1; g.add(sp); }
+    const snout = M(new THREE.SphereGeometry(.05, 8, 6), 0x3A2A1E); snout.position.set(0, -.02, .19); g.add(snout);
+  } else if(base === 'duck'){
+    const beak = M(new THREE.SphereGeometry(.06, 8, 6), 0xF2984A); beak.scale.set(1.3, .5, 1.2); beak.position.set(0, -.02, .2); g.add(beak);
+    const wing = M(new THREE.SphereGeometry(.09, 8, 6), c, { transparent:true, opacity:.9 });
+    wing.scale.set(.35, .9, 1); wing.position.set(.17, .02, 0); g.add(wing);
+  } else if(base === 'fox'){
+    [-1, 1].forEach(s => { const ear = M(new THREE.ConeGeometry(.05, .16, 4), c);
+      ear.position.set(s * .1, .26, 0); g.add(ear); });
+    const tail = M(new THREE.SphereGeometry(.07, 8, 6), 0xFFFFFF); tail.scale.set(1, 1, 2.2); tail.position.set(-.1, .1, -.2); g.add(tail);
+    const snout = M(new THREE.SphereGeometry(.05, 8, 6), 0xFFFFFF); snout.position.set(0, -.05, .18); g.add(snout);
+  }
+
+  [-1, 1].forEach(s => { const eye = M(new THREE.SphereGeometry(.032, 8, 6), INK);
+    eye.position.set(s * .08, .04, .18); g.add(eye); });
+}
+
+/* stage 進化外觀:1 加小芽冠、2 再加閃亮環繞 */
+function petEvolveFX(g, stage, c){
+  if(stage >= 1){
+    const crest = M(new THREE.ConeGeometry(.05, .16, 5), 0x6FA25E);
+    crest.position.set(0, .3, 0); g.add(crest);
+  }
+  if(stage >= 2){
+    for(let i = 0; i < 3; i++){ const p = M(new THREE.SphereGeometry(.03, 8, 8), 0xFFE9A6, { transparent:true, opacity:.95 });
+      p.userData.orbit = { a: i * 2.1, r:.3, h:.12 }; g.add(p); }
+    const glow = M(new THREE.SphereGeometry(.28, 16, 12), c, { transparent:true, opacity:.16 });
+    glow.userData.glow = true; g.add(glow);
+  }
+}
+
+YY.buildPetMesh = function(species, stage){
+  const P = YY.PETS[species] || YY.PETS.cottonbun;
+  const g = new THREE.Group();
+  petShape(g, P.base, P.c);
+  petEvolveFX(g, stage || 0, P.c);
+  const sc = 1 + (stage || 0) * .28;
+  g.scale.setScalar(sc);
+  g.userData.base = P.base;
+  g.traverse(o => { if(o.isMesh) o.castShadow = true; });
+  return g;
+};
+
+/* ============================================================
+   二、精靈 SPIRITS(只待在家)—— 種類更多、加上顏色/會飛/發光變化
+   ============================================================ */
+YY.SPIRITS = {
+  leaf:   { n:'葉葉精靈', c:0x8FCB6E, r:0 },
+  dew:    { n:'露露精靈', c:0x8FCBE6, r:0 },
+  pebble: { n:'石石精靈', c:0xC4A47A, r:0 },
+  sprout: { n:'芽芽精靈', c:0xBEE39A, r:0 },
+  bloom:  { n:'花花精靈', c:0xF2A0B5, r:0 },
+  moth:   { n:'蛾蛾精靈', c:0xB79BE8, r:1, flying:true },
+  ember:  { n:'燼燼精靈', c:0xF2984A, r:1, glow:true },
+  frost:  { n:'霜霜精靈', c:0xCDEFF5, r:1, glow:true },
+  spark:  { n:'電電精靈', c:0xF2E24E, r:1, flying:true },
+  moon:   { n:'月月精靈', c:0xE8E4D4, r:2, glow:true },
+  aurora: { n:'極光精靈', c:0x9BE8D4, r:2, flying:true, glow:true },
+};
+YY.SPIRIT_ORDER = Object.keys(YY.SPIRITS);
+
+YY.buildSpiritMesh = function(speciesId){
+  const S = YY.SPIRITS[speciesId] || YY.SPIRITS.leaf;
+  const g = new THREE.Group();
+  const body = M(new THREE.SphereGeometry(.24, 14, 10), S.c, { transparent:true, opacity:.95 });
+  body.scale.set(1, .9, 1); g.add(body);
+  [-1, 1].forEach(s => { const eye = M(new THREE.SphereGeometry(.04, 8, 6), INK);
+    eye.position.set(s * .09, .05, .21); g.add(eye); });
+  if(S.flying){
+    [-1, 1].forEach(s => { const w = M(new THREE.SphereGeometry(.12, 10, 8), S.c, { transparent:true, opacity:.6 });
+      w.scale.set(1, .5, .18); w.position.set(s * .26, .12, -.05); w.rotation.z = s * .5;
+      w.userData.flap = { side:s }; g.add(w); });
+  }
+  if(S.glow){
+    const halo = M(new THREE.SphereGeometry(.34, 16, 12), S.c, { transparent:true, opacity:.18 });
+    halo.userData.glow = true; g.add(halo);
+  }
+  g.userData.speciesId = speciesId;
+  g.traverse(o => { if(o.isMesh) o.castShadow = true; });
+  return g;
+};
+
+/* 依稀有度加權隨機挑一種精靈 / 寵物(給森林生怪 & 撿蛋用) */
+const SP_WEIGHT = { 0:30, 1:12, 2:4 };
+function weightedPick(order, table){
+  const pool = [];
+  order.forEach(id => { for(let i = 0; i < SP_WEIGHT[table[id].r]; i++) pool.push(id); });
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+YY.pickSpiritSpecies = () => weightedPick(YY.SPIRIT_ORDER, YY.SPIRITS);
+YY.pickPetSpecies    = () => weightedPick(YY.PET_ORDER, YY.PETS);
+YY.catchChance = r => [.7, .42, .18][r];
+
+/* ============================================================
+   三、玩家擁有資料的小工具(存檔欄位在 config.js)
+   ============================================================ */
+let uidSeq = 0;
+YY.newUid = p => (p || 'u') + Date.now().toString(36) + (uidSeq++);
+
+YY.addPet = function(species){
+  const pet = { uid: YY.newUid('pet'), sp: species, walks:0 };
+  YY.ownedPets.push(pet);
+  if(!YY.metPets.includes(species)) YY.metPets.push(species);
+  if(!YY.activePet) YY.activePet = pet.uid;
+  YY.save();
+  return pet;
+};
+YY.addHomeSpirit = function(species){
+  const sp = { uid: YY.newUid('sp'), sp: species };
+  YY.homeSpirits.push(sp);
+  if(!YY.metSpirits.includes(species)) YY.metSpirits.push(species);
+  YY.save();
+  if(YY.rebuildHomeSpirits) YY.rebuildHomeSpirits();
+  return sp;
+};
+YY.getPet = uid => YY.ownedPets.find(p => p.uid === uid) || null;
+YY.setActivePet = function(uid){
+  YY.activePet = uid;
+  YY.save();
+  if(YY.refreshActivePet) YY.refreshActivePet();
+};
+})();
+
+</script>
+<script>
+/* ============================================================
    family.js — 芽芽的家族
    隨機觸發「叮咚!」家人來訪,見過一次就永久解鎖,可手動切換
    ============================================================ */
@@ -1206,6 +1464,8 @@ async function loadFaceLandmarkOffline(){
 /* ---------- 開關鏡頭 ---------- */
 async function enableCamera(){
   const A = YY.attention;
+  /* 在森林裡:「🎯」改成切換第一/第三人稱視角(#5),不進入 Focus Mode */
+  if(YY.mode === 'explore'){ YY.toggleForestFPV(); return; }
   if(A.camera === 'on'){ disableCamera(); return; }
   if(!window.faceapi || !navigator.mediaDevices){
     YY.flash('這個環境沒辦法用鏡頭,改用游標感應', 3000);
@@ -1335,9 +1595,11 @@ YY.updateAttention = function(t){
 /* ---------- 介面 ---------- */
 function renderEyeBtn(){
   const b = $('#btnEye'); if(!b) return;
+  if(YY.mode === 'explore') return;   // 森林裡的按鈕文字交給 main 的 renderModeUI 管
   b.textContent = { off:'🎯 Focus Mode', starting:'🎯 啟動中…', on:'🎯 專注中', denied:'🎯 Focus Mode' }[YY.attention.camera];
   b.classList.toggle('live', YY.attention.camera === 'on');
 }
+YY.renderEyeBtnDefault = renderEyeBtn;
 function renderStatus(){
   const el = $('#watchState'); if(!el) return;
   el.textContent = YY.attention.watching ? '👀 牠知道你在看' : '🍃 你不在,自己玩中';
@@ -1731,6 +1993,11 @@ YY.initWorld = function(){
   scene.fog = new THREE.Fog(P.bg, 26, 46);   // 霧往後推,畫面更透亮不糊
   YY.scene = scene;
 
+  /* 房間裡的東西全部收進 roomGroup,進森林時整組隱藏(燈光留在 scene 照亮兩邊) */
+  const room = new THREE.Group();
+  scene.add(room);
+  YY.roomGroup = room;
+
   const camera = new THREE.PerspectiveCamera(46, innerWidth / innerHeight, .1, 60);
   YY.camera = camera;
   YY.cam = { theta:.35, phi:1.12, radius:10.5, target:new THREE.Vector3(0, 1.5, 0) };
@@ -1755,39 +2022,44 @@ YY.initWorld = function(){
   const floor = new THREE.Mesh(new THREE.CylinderGeometry(11, 11, .3, 48), mat(P.floor));
   floor.position.y = -.15;
   floor.receiveShadow = true;
-  scene.add(floor);
+  room.add(floor);
   YY.floor = floor;
 
   const rug = new THREE.Mesh(new THREE.CylinderGeometry(3.4, 3.4, .05, 40), mat(P.rug));
   rug.position.y = .03; rug.receiveShadow = true;
-  scene.add(rug);
+  room.add(rug);
   const rugRim = new THREE.Mesh(new THREE.TorusGeometry(3.4, .06, 8, 44), mat(0xE8C97A));
   rugRim.rotation.x = Math.PI / 2; rugRim.position.y = .06;
-  scene.add(rugRim);
+  room.add(rugRim);
 
   const wallMat = mat(P.wall, { side:THREE.DoubleSide });
   const wall1 = new THREE.Mesh(new THREE.PlaneGeometry(22, 9), wallMat);
   wall1.position.set(0, 4.5, -10.5);
   const wall2 = new THREE.Mesh(new THREE.PlaneGeometry(22, 9), wallMat);
   wall2.rotation.y = Math.PI / 2; wall2.position.set(-10.5, 4.5, 0);
-  scene.add(wall1, wall2);
+  room.add(wall1, wall2);
   const skirt1 = new THREE.Mesh(new THREE.BoxGeometry(22, .5, .18), mat(0xE2DCC6));
-  skirt1.position.set(0, .25, -10.42); scene.add(skirt1);
+  skirt1.position.set(0, .25, -10.42); room.add(skirt1);
   const skirt2 = skirt1.clone(); skirt2.rotation.y = Math.PI / 2; skirt2.position.set(-10.42, .25, 0);
-  scene.add(skirt2);
+  room.add(skirt2);
+
+  /* ---------- 通往牙牙森林的門(#1:點門就走出房間到森林) ---------- */
+  YY.roomDoor = buildDoor();
+  YY.roomDoor.position.set(-4.2, 0, -10.32);
+  room.add(YY.roomDoor);
 
   /* 窗戶(牆上一塊暖光) */
   const win = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 3.0),
     mat(0xF5E4B0, { emissive:0xF2DA96, emissiveIntensity:.3 }));
   win.position.set(3.2, 4.6, -10.44);
-  scene.add(win);
+  room.add(win);
   const frame = new THREE.Mesh(new THREE.BoxGeometry(3.7, .16, .1), mat(P.ink));
   const f1 = frame.clone(); f1.position.set(3.2, 6.15, -10.4);
   const f2 = frame.clone(); f2.position.set(3.2, 3.05, -10.4);
   const f3 = frame.clone(); f3.position.set(3.2, 4.6, -10.4);
   const f4 = new THREE.Mesh(new THREE.BoxGeometry(.16, 3.2, .1), mat(P.ink)); f4.position.set(3.2, 4.6, -10.4);
   const f5 = f4.clone(); f5.position.x = 1.4;  const f6 = f4.clone(); f6.position.x = 5.0;
-  scene.add(f1, f2, f3, f4, f5, f6);
+  room.add(f1, f2, f3, f4, f5, f6);
 
   /* ---------- 盆栽(芽芽的躲藏點) ---------- */
   const plant = new THREE.Group();
@@ -1808,16 +2080,16 @@ YY.initWorld = function(){
     plant.add(leaf);
   }
   plant.position.set(-4.6, 0, -3.2);
-  scene.add(plant);
+  room.add(plant);
 
   /* ---------- 扭蛋機(本專案的招牌!) ---------- */
   YY.machine = buildMachine();
   YY.machine.position.set(4.4, 0, -2.6);
   YY.machine.rotation.y = -.5;
-  scene.add(YY.machine);
+  room.add(YY.machine);
 
   /* ---------- 會被互動的小道具:積木塔 / 豆袋 / 紙箱 ---------- */
-  buildProps(scene);
+  buildProps(room);
 
   /* ---------- 躲藏點(好感度低時會躲去這些地方偷看你) ---------- */
   YY.hideSpots = [
@@ -1833,7 +2105,28 @@ YY.initWorld = function(){
     camera.updateProjectionMatrix();
     renderer.setSize(innerWidth, innerHeight);
   });
+
+  /* 房間蓋好後,順手把森林也蓋起來(先隱藏) */
+  if(YY.initForest) YY.initForest();
 };
+
+/* ---------- 通往森林的門 ---------- */
+function buildDoor(){
+  const g = new THREE.Group();
+  const jamb = mat(0x8A5A3A);
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(1.7, 3.1, .2), jamb);
+  frame.position.y = 1.55; g.add(frame);
+  const panel = new THREE.Mesh(new THREE.BoxGeometry(1.35, 2.75, .12), mat(0xC98A5A));
+  panel.position.set(0, 1.42, .1); g.add(panel);
+  const knob = new THREE.Mesh(new THREE.SphereGeometry(.09, 10, 8), mat(0xF2C14E));
+  knob.position.set(.5, 1.4, .2); g.add(knob);
+  /* 門上小牌子:牙牙森林 */
+  const sign = new THREE.Mesh(new THREE.BoxGeometry(1.4, .5, .08), mat(0x6FA25E));
+  sign.position.set(0, 3.05, .12); g.add(sign);
+  g.userData.isDoor = true;
+  g.traverse(o => { if(o.isMesh){ o.castShadow = true; o.userData.isDoor = true; } });
+  return g;
+}
 
 function buildMachine(){
   const g = new THREE.Group();
@@ -2041,6 +2334,184 @@ YY.updateParticles = function(dt){
 </script>
 <script>
 /* ============================================================
+   forest.js — 牙牙森林(房間外的世界)
+   #1 房間外的世界:整片森林,精靈/寵物都在這裡誘捕
+   #5 森林裡可切換「牙牙視角(第一人稱)」與「第三人稱視角」
+   平常隱藏,進入探索模式時才顯示;和房間互相切換
+   ============================================================ */
+(function(){
+const M = YY.M, mat = YY.mat;
+
+YY.FOREST = { bg:0xBFE3F2, ground:0x9BC46E, groundDark:0x86B45D };
+YY.forestSpawn = { x:0, z:5 };          // 從房間門走出來的落點
+YY.forestGroup = null;
+YY.forestFloor = null;
+
+function tree(x, z, scale){
+  const g = new THREE.Group();
+  const trunk = M(new THREE.CylinderGeometry(.22 * scale, .3 * scale, 1.6 * scale, 8), 0x8A5A3A);
+  trunk.position.y = .8 * scale; g.add(trunk);
+  const greens = [0x5E9A48, 0x6FA25E, 0x4E8340];
+  for(let i = 0; i < 3; i++){
+    const blob = M(new THREE.SphereGeometry((.9 - i * .16) * scale, 12, 10), greens[i % greens.length]);
+    blob.position.set(YY.rand(-.2, .2) * scale, (1.7 + i * .5) * scale, YY.rand(-.2, .2) * scale);
+    g.add(blob);
+  }
+  g.position.set(x, 0, z);
+  g.traverse(o => { if(o.isMesh) o.castShadow = true; });
+  return g;
+}
+function bush(x, z){
+  const g = new THREE.Group();
+  for(let i = 0; i < 3; i++){ const b = M(new THREE.SphereGeometry(YY.rand(.3, .5), 10, 8), 0x6FA25E);
+    b.position.set(YY.rand(-.4, .4), YY.rand(.2, .4), YY.rand(-.4, .4)); g.add(b); }
+  g.position.set(x, 0, z); g.traverse(o => { if(o.isMesh) o.castShadow = true; });
+  return g;
+}
+function rock(x, z){
+  const r = M(new THREE.DodecahedronGeometry(YY.rand(.25, .45), 0), 0xA9A99A);
+  r.position.set(x, .18, z); r.rotation.set(YY.rand(0, 3), YY.rand(0, 3), YY.rand(0, 3));
+  r.castShadow = true; return r;
+}
+
+YY.initForest = function(){
+  const g = new THREE.Group();
+  g.visible = false;
+
+  /* 一大片草地 */
+  const ground = new THREE.Mesh(new THREE.CircleGeometry(30, 48), mat(YY.FOREST.ground));
+  ground.rotation.x = -Math.PI / 2; ground.position.y = 0; ground.receiveShadow = true;
+  g.add(ground); YY.forestFloor = ground;
+
+  /* 深色草叢圓斑,讓地面不單調 */
+  for(let i = 0; i < 10; i++){
+    const patch = new THREE.Mesh(new THREE.CircleGeometry(YY.rand(1.2, 2.6), 20), mat(YY.FOREST.groundDark));
+    patch.rotation.x = -Math.PI / 2; patch.position.set(YY.rand(-12, 12), .01, YY.rand(-12, 12));
+    g.add(patch);
+  }
+
+  /* 小池塘 */
+  const pond = new THREE.Mesh(new THREE.CircleGeometry(2.4, 28), mat(0x8FCBE6, { transparent:true, opacity:.85 }));
+  pond.rotation.x = -Math.PI / 2; pond.position.set(-7, .02, -6); g.add(pond);
+
+  /* 樹木 / 灌木 / 石頭 圍成一圈,中央留空地散步 */
+  const spots = [];
+  for(let i = 0; i < 22; i++){
+    const a = i / 22 * Math.PI * 2, r = YY.rand(8, 14);
+    spots.push([Math.cos(a) * r, Math.sin(a) * r]);
+  }
+  spots.forEach(([x, z], i) => {
+    if(i % 3 === 0) g.add(bush(x, z));
+    else g.add(tree(x, z, YY.rand(.8, 1.4)));
+  });
+  for(let i = 0; i < 6; i++) g.add(rock(YY.rand(-6, 6), YY.rand(-6, 6)));
+  /* 幾朵點綴小花 */
+  for(let i = 0; i < 14; i++){
+    const f = M(new THREE.SphereGeometry(.1, 8, 6), [0xF2A0B5, 0xF2C14E, 0xE4573D][i % 3]);
+    f.position.set(YY.rand(-7, 7), .1, YY.rand(-7, 7)); g.add(f);
+  }
+
+  /* 回家的門(小木屋),站在森林邊緣,點它就回房間 */
+  const home = buildHomeHut();
+  home.position.set(0, 0, 9.5);
+  g.add(home);
+  YY.forestHome = home;
+
+  YY.scene.add(g);
+  YY.forestGroup = g;
+};
+
+function buildHomeHut(){
+  const g = new THREE.Group();
+  const wall = M(new THREE.BoxGeometry(2.4, 1.8, 1.8), 0xEDD394); wall.position.y = .9; g.add(wall);
+  const roof = M(new THREE.ConeGeometry(1.9, 1.2, 4), 0xC4704F); roof.position.y = 2.2; roof.rotation.y = Math.PI / 4; g.add(roof);
+  const door = M(new THREE.BoxGeometry(.8, 1.3, .1), 0x8A5A3A); door.position.set(0, .65, .92); g.add(door);
+  const knob = M(new THREE.SphereGeometry(.06, 8, 6), 0xF2C14E); knob.position.set(.24, .65, .98); g.add(knob);
+  g.userData.isHomeDoor = true;
+  g.traverse(o => { if(o.isMesh) o.castShadow = true; o.userData.isHomeDoor = true; });
+  return g;
+}
+
+/* ---------- 顯示 / 隱藏:房間 ↔ 森林 ---------- */
+YY.showForest = function(on){
+  if(!YY.forestGroup) return;
+  YY.forestGroup.visible = on;
+  if(YY.roomGroup) YY.roomGroup.visible = !on;
+  YY.scene.background = new THREE.Color(on ? YY.FOREST.bg : YY.PAL.bg);
+  YY.scene.fog = on ? new THREE.Fog(YY.FOREST.bg, 30, 55) : new THREE.Fog(YY.PAL.bg, 26, 46);
+};
+
+/* ============================================================
+   森林鏡頭:第三人稱(跟拍)/ 第一人稱(牙牙視角)
+   ============================================================ */
+YY.forestCam = { fpv:false, yaw:0, tpTheta:.35, tpPhi:1.1, tpRadius:8 };
+
+YY.updateForestCam = function(t){
+  const cre = YY.cre; if(!cre || !YY.camera) return;
+  const F = YY.forestCam, cam = YY.camera;
+  if(F.fpv){
+    /* 第一人稱:相機在牙牙頭部,朝牠面向的方向看,加一點走路晃動 */
+    const eyeY = 1.35 * cre.def.size;
+    const bob = Math.sin(t / 140) * .04;
+    cam.position.set(cre.x, eyeY + bob, cre.z);
+    const look = new THREE.Vector3(
+      cre.x + Math.sin(F.yaw) * 4,
+      eyeY - .3,
+      cre.z + Math.cos(F.yaw) * 4,
+    );
+    cam.lookAt(look);
+    cre.root.rotation.y = F.yaw;   // 身體跟著視角轉
+  } else {
+    /* 第三人稱:繞著牙牙的跟拍鏡頭 */
+    F.tpPhi = YY.clamp(F.tpPhi, .5, 1.4);
+    F.tpRadius = YY.clamp(F.tpRadius, 4, 14);
+    const cx = cre.x, cy = 1.4, cz = cre.z;
+    cam.position.set(
+      cx + F.tpRadius * Math.sin(F.tpPhi) * Math.sin(F.tpTheta),
+      cy + F.tpRadius * Math.cos(F.tpPhi),
+      cz + F.tpRadius * Math.sin(F.tpPhi) * Math.cos(F.tpTheta),
+    );
+    cam.lookAt(cx, cy, cz);
+  }
+};
+
+/* 切換第一 / 第三人稱(給「🎯」按鈕在森林裡呼叫) */
+YY.toggleForestFPV = function(){
+  const F = YY.forestCam;
+  F.fpv = !F.fpv;
+  if(F.fpv){
+    F.yaw = F.tpTheta;   // 從目前第三人稱角度接手
+    YY.flash('🐾 切到「牙牙視角」(第一人稱)!拖曳畫面可以左右張望,點地面往前走', 4200);
+    YY.tryForestCamPreview(true);
+  } else {
+    YY.flash('🌳 切回第三人稱視角', 2600);
+    YY.tryForestCamPreview(false);
+  }
+  if(YY.renderForestHint) YY.renderForestHint();
+};
+
+/* 森林裡「開鏡頭」:純粹開一個小預覽當沉浸感,不進入 Focus Mode */
+let fStream = null;
+YY.tryForestCamPreview = async function(on){
+  if(!on){
+    if(fStream){ fStream.getTracks().forEach(tr => tr.stop()); fStream = null; }
+    const el = document.getElementById('camPreview'); if(el){ el.style.display = 'none'; el.srcObject = null; }
+    return;
+  }
+  if(!navigator.mediaDevices) return;
+  try{
+    fStream = await navigator.mediaDevices.getUserMedia({ video:{ width:{ideal:320}, height:{ideal:240} }, audio:false });
+    let el = document.getElementById('camPreview');
+    if(!el){ el = document.createElement('video'); el.id = 'camPreview';
+      el.muted = true; el.playsInline = true; el.autoplay = true; document.body.appendChild(el); }
+    el.srcObject = fStream; el.style.display = 'block';
+  }catch(e){ /* 拿不到鏡頭也沒關係,第一人稱照樣能玩 */ }
+};
+})();
+
+</script>
+<script>
+/* ============================================================
    gacha.js — 抽扭蛋 / 衣櫃 / 家族面板
    ============================================================ */
 (function(){
@@ -2228,7 +2699,8 @@ function renderFamily(){
       <small>${met ? F.rel : '還沒來訪'}</small>
     </div>`;
   }
-  body.innerHTML = html + '</div>' + renderVariantSection() + renderSpiritSection();
+  body.innerHTML = html + '</div>' + renderPetSection() + renderEggSection()
+    + renderVariantSection() + renderSpiritSection();
   body.querySelectorAll('.fcard[data-id]').forEach(card => {
     card.onclick = () => {
       const id = card.dataset.id;
@@ -2243,6 +2715,65 @@ function renderFamily(){
       renderFamily();
     };
   });
+  /* 「設為散步夥伴」按鈕 */
+  body.querySelectorAll('button[data-pet]').forEach(b => {
+    b.onclick = () => {
+      YY.setActivePet(b.dataset.pet);
+      YY.flash(`帶「${YY.petDisplayName(YY.getPet(b.dataset.pet))}」一起!去牙牙森林散步就會慢慢進化~`, 3600);
+      renderFamily();
+    };
+  });
+}
+
+/* ---------- 🐾 我的寵物(會跟隨 + 可帶去散步進化) ---------- */
+function renderPetSection(){
+  const pets = YY.ownedPets || [];
+  let html = `<div class="fintro" style="margin-top:18px;">🐾 <b>我的寵物</b>——會跟著你到處走。
+    去牙牙森林用莓果誘捕新寵物,選一隻「設為散步夥伴」,常帶去散步就會進化!
+    (已收集 ${(YY.metPets||[]).length} / ${YY.PET_ORDER.length} 種)</div>`;
+  if(!pets.length){
+    html += `<div class="wempty">還沒有寵物,去森林誘捕一隻吧!</div>`;
+    return html;
+  }
+  html += `<div class="petlist">`;
+  pets.forEach(pet => {
+    const P = YY.PETS[pet.sp]; if(!P) return;
+    const prog = YY.petStageProgress(pet);
+    const active = YY.activePet === pet.uid;
+    const col = '#' + P.c.toString(16).padStart(6, '0');
+    const bar = prog.st >= 2
+      ? `<span class="petmax">★ 完全體</span>`
+      : `<div class="petbar"><i style="width:${prog.pct}%"></i></div>
+         <small>再散步約 ${prog.need} 步進化</small>`;
+    html += `<div class="petrow ${active ? 'on' : ''}">
+      <div class="dot" style="background:${col}"></div>
+      <div class="petinfo"><b>${P.n}</b> <em>${YY.STAGE_TITLE[prog.st]}</em>${bar}</div>
+      <button data-pet="${pet.uid}" class="${active ? 'on' : ''}">${active ? '散步夥伴' : '帶牠去'}</button>
+    </div>`;
+  });
+  return html + `</div>`;
+}
+
+/* ---------- 🥚 孵蛋器(森林撿到的蛋在這裡孵成精靈) ---------- */
+function renderEggSection(){
+  const eggs = YY.eggs || [];
+  let html = `<div class="fintro" style="margin-top:18px;">🥚 <b>孵蛋器</b>——在牙牙森林撿到的蛋放這裡,
+    散步或等待都會加快孵化,孵出來是一隻精靈,會住進你家。</div>`;
+  if(!eggs.length){
+    html += `<div class="wempty">目前沒有蛋。去森林地上找找看!</div>`;
+    return html;
+  }
+  html += `<div class="petlist">`;
+  eggs.forEach((egg, i) => {
+    const pct = Math.min(100, Math.round(egg.prog / YY.EGG_HATCH * 100));
+    html += `<div class="petrow">
+      <div class="dot" style="background:#F5EAD0">🥚</div>
+      <div class="petinfo"><b>神秘的蛋 #${i + 1}</b>
+        <div class="petbar"><i style="width:${pct}%"></i></div>
+        <small>孵化 ${pct}%</small></div>
+    </div>`;
+  });
+  return html + `</div>`;
 }
 function renderVariantSection(){
   if(!YY.VARIANT_ORDER || !YY.VARIANT_ORDER.length) return '';
@@ -2263,8 +2794,10 @@ function renderVariantSection(){
 }
 function renderSpiritSection(){
   if(!YY.SPIRIT_ORDER || !YY.SPIRIT_ORDER.length) return '';
-  let html = `<div class="fintro" style="margin-top:18px;">🫐 <b>精靈圖鑑</b>——去「探索世界」用莓果誘捕野生精靈
-    (已捕獲 ${YY.metSpirits.length} / ${YY.SPIRIT_ORDER.length})</div><div class="fgrid">`;
+  const homeCount = (YY.homeSpirits || []).length;
+  let html = `<div class="fintro" style="margin-top:18px;">🫐 <b>精靈圖鑑</b>——精靈只會待在家。
+    去牙牙森林用莓果誘捕、或撿蛋帶回家孵化,牠們就會住進房間裡陪你。
+    (目前家裡有 ${homeCount} 隻・圖鑑 ${YY.metSpirits.length} / ${YY.SPIRIT_ORDER.length} 種)</div><div class="fgrid">`;
   for(const id of YY.SPIRIT_ORDER){
     const S = YY.SPIRITS[id];
     const met = YY.metSpirits.includes(id);
@@ -2468,94 +3001,59 @@ YY.addTickets = function(n, why){
 </script>
 <script>
 /* ============================================================
-   companion.js — 每一位牙寶都有自己的專屬小寵物
-   外型/顏色依角色本身的配色決定,會跟在角色旁邊晃來晃去
+   companion.js — 跟隨主人的「當前寵物」
+   #2 寵物才能跟隨主人:玩家選定的 activePet 會跟在牙寶旁邊,
+      不論在房間還是森林都跟著;精靈則只待在家(見 home.js)
+   #4 帶去散步會進化:stage 由 walks 決定,外觀會跟著長大
    ============================================================ */
 (function(){
-const SHAPES = ['bunny', 'bird', 'fish', 'chick', 'snail'];
 
-/* 用角色 id 決定固定的寵物外型(同一位角色每次都是同一隻寵物) */
-function shapeFor(id){
-  let h = 0;
-  for(let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return SHAPES[h % SHAPES.length];
-}
-const SHAPE_NAME = { bunny:'兔兔精靈', bird:'小鳥精靈', fish:'小魚精靈', chick:'雛鳥精靈', snail:'蝸牛精靈' };
+let comp = null;   // { mesh, x, z, bobT, uid, stage }
 
-function buildCompanionMesh(id){
-  const F = YY.FAMILY[id];
-  const shape = shapeFor(id);
-  const c = F.blush;   // 用角色自己的腮紅色當寵物主色,天生就是一對
-  const g = new THREE.Group();
-
-  const body = YY.M(new THREE.SphereGeometry(.2, 14, 10), c);
-  body.scale.set(1, .92, 1);
-  g.add(body);
-
-  if(shape === 'bunny'){
-    [-1, 1].forEach(s => {
-      const ear = YY.M(new THREE.SphereGeometry(.06, 8, 6), c);
-      ear.scale.set(.55, 1.7, .5);
-      ear.position.set(s * .09, .3, -.02);
-      g.add(ear);
-    });
-  } else if(shape === 'bird'){
-    const beak = YY.M(new THREE.SphereGeometry(.05, 8, 6), 0xF2C14E);
-    beak.scale.set(1, .6, 1.4);
-    beak.position.set(0, -.02, .2);
-    g.add(beak);
-    [-1, 1].forEach(s => {
-      const wing = YY.M(new THREE.SphereGeometry(.1, 10, 8), c, { transparent:true, opacity:.92 });
-      wing.scale.set(.4, 1, .9);
-      wing.position.set(s * .19, .02, -.02);
-      wing.userData.flap = { side: s };
-      g.add(wing);
-    });
-  } else if(shape === 'fish'){
-    const tail = YY.M(new THREE.SphereGeometry(.09, 8, 6), c);
-    tail.scale.set(.4, 1, 1.6);
-    tail.position.set(0, 0, -.24);
-    g.add(tail);
-  } else if(shape === 'chick'){
-    const tuft = YY.M(new THREE.SphereGeometry(.04, 6, 6), 0xF2C14E);
-    tuft.position.set(0, .24, .06);
-    g.add(tuft);
-    const beak = YY.M(new THREE.SphereGeometry(.04, 6, 6), 0xF2C14E);
-    beak.scale.set(1, .7, 1.3); beak.position.set(0, -.02, .19);
-    g.add(beak);
-  } else if(shape === 'snail'){
-    const shell = YY.M(new THREE.SphereGeometry(.13, 10, 8), c);
-    shell.position.set(0, .13, -.1);
-    g.add(shell);
-  }
-
-  [-1, 1].forEach(s => {
-    const eye = YY.M(new THREE.SphereGeometry(.032, 8, 6), 0x2C4034);
-    eye.position.set(s * .08, .04, .18);
-    g.add(eye);
-  });
-
-  g.userData.shape = shape;
-  g.traverse(o => { if(o.isMesh) o.castShadow = true; });
-  return g;
-}
-
-/* ---------- 目前的寵物 ---------- */
-let comp = null;
-YY.buildCompanionFor = function(id){
+/* 依 activePet 重新建立跟隨寵物(換寵物 / 進化後呼叫) */
+YY.refreshActivePet = function(){
   if(comp && comp.mesh){ YY.scene.remove(comp.mesh); comp = null; }
+  const pet = YY.getPet(YY.activePet);
+  if(!pet) return;                 // 還沒有寵物 → 沒有跟隨者
+  const stage = YY.petStage(pet);
+  const mesh = YY.buildPetMesh(pet.sp, stage);
   const cre = YY.cre;
-  const mesh = buildCompanionMesh(id);
   const x = (cre ? cre.x : 0) - .9, z = (cre ? cre.z : 1.2) + .55;
   mesh.position.set(x, .2, z);
   YY.scene.add(mesh);
-  comp = { mesh, x, z, bobT: Math.random() * 10, id };
-};
-YY.companionName = function(id){
-  return SHAPE_NAME[shapeFor(id)] || '小精靈';
+  comp = { mesh, x, z, bobT: Math.random() * 10, uid: pet.uid, stage };
 };
 
-/* ---------- 每幀跟著主角晃 ---------- */
+/* 兼容舊呼叫:切換角色時仍會叫 buildCompanionFor,轉呼叫 refreshActivePet */
+YY.buildCompanionFor = function(){ YY.refreshActivePet(); };
+
+YY.companionName = function(){
+  const pet = YY.getPet(YY.activePet);
+  return pet ? YY.petDisplayName(pet) : '小寵物';
+};
+
+/* 累積散步距離 → 進化(森林裡由 explore.js 呼叫) */
+YY.addWalkToActivePet = function(units){
+  const pet = YY.getPet(YY.activePet);
+  if(!pet) return;
+  const before = YY.petStage(pet);
+  pet.walks = (pet.walks || 0) + units;
+  const after = YY.petStage(pet);
+  if(after > before){
+    YY.save();
+    YY.refreshActivePet();
+    YY.sfx.tada();
+    if(YY.cre) YY.spawnConfetti(comp ? comp.x : YY.cre.x, 1.4, comp ? comp.z : YY.cre.z, 30);
+    const petName = (YY.PETS[pet.sp] && YY.PETS[pet.sp].n) || '小寵物';
+    YY.flash(`✨ 進化!「${petName}」升級成【${YY.STAGE_TITLE[after]}】了!常帶牠散步果然有用~`, 4600);
+    if(document.getElementById('family') && document.getElementById('family').classList.contains('on') && YY.renderFamily)
+      YY.renderFamily();
+  } else {
+    YY.save();
+  }
+};
+
+/* ---------- 每幀:跟在主人旁邊晃 ---------- */
 YY.updateCompanion = function(dt, t){
   if(!comp || !YY.cre) return;
   const cre = YY.cre;
@@ -2564,7 +3062,7 @@ YY.updateCompanion = function(dt, t){
   const dx = tx - comp.x, dz = tz - comp.z;
   const dist = Math.hypot(dx, dz);
   if(dist > .05){
-    const sp = 1.5 * dt;
+    const sp = 1.8 * dt;
     comp.x += dx / dist * Math.min(sp, dist);
     comp.z += dz / dist * Math.min(sp, dist);
     comp.mesh.rotation.y += (Math.atan2(dx, dz) - comp.mesh.rotation.y) * .08;
@@ -2573,10 +3071,10 @@ YY.updateCompanion = function(dt, t){
   const hop = Math.abs(Math.sin(comp.bobT)) * .075;
   comp.mesh.position.set(comp.x, .2 + hop, comp.z);
   comp.mesh.children.forEach(ch => {
-    if(ch.userData.flap){
-      const f = Math.sin(t / 90) * .35;
-      ch.rotation.z = ch.userData.flap.side * (.4 + f);
-    }
+    if(ch.userData.flap){ const f = Math.sin(t / 90) * .35; ch.rotation.z = ch.userData.flap.side * (.4 + f); }
+    const ob = ch.userData.orbit;
+    if(ob){ ob.a += dt * 1.8; ch.position.set(Math.cos(ob.a) * ob.r, .18 + Math.sin(ob.a * 2) * ob.h, Math.sin(ob.a) * ob.r); }
+    if(ch.userData.glow) ch.material.opacity = .14 + Math.sin(t / 420) * .07;
   });
 };
 })();
@@ -2584,128 +3082,140 @@ YY.updateCompanion = function(dt, t){
 </script>
 <script>
 /* ============================================================
-   explore.js — 探索世界(牙牙森林)
-   #5 散步/運動:點地板走過去;野生精靈會在場景裡閒晃
-   #6 用莓果誘捕精靈:選中一隻精靈 → 丟莓果引牠過去 → 吃完判定捕獲
+   explore.js — 牙牙森林(房間外的世界)裡發生的事
+   #1 走出房間門 → 森林場景;精靈與寵物都在森林誘捕
+   #3 用莓果誘捕「寵物」和「精靈」,有機率成功 / 失敗
+   #4 帶著選定的寵物散步 → 累積距離會進化
+   #6 森林裡會出現蛋,點一下撿起來帶回家孵化
    ============================================================ */
 (function(){
-const $ = s => document.querySelector(s);
 
-/* ---------- 精靈圖鑑資料(共 6 種,含普通/稀有/傳說) ---------- */
-YY.SPIRITS = {
-  leaf:   { n:'葉葉精靈', c:0x8FCB6E, r:0 },
-  dew:    { n:'露露精靈', c:0x8FCBE6, r:0 },
-  pebble: { n:'石石精靈', c:0xC4A47A, r:0 },
-  moth:   { n:'蛾蛾精靈', c:0xB79BE8, r:1, flying:true },
-  ember:  { n:'燼燼精靈', c:0xF2984A, r:1 },
-  moon:   { n:'月月精靈', c:0xE8E4D4, r:2 },
-};
-YY.SPIRIT_ORDER = ['leaf', 'dew', 'pebble', 'moth', 'ember', 'moon'];
-const CATCH_CHANCE = [.7, .42, .18];     // 依稀有度 r:0/1/2
-const SPAWN_WEIGHT = { 0:30, 1:12, 2:4 };
-
-function pickSpiritSpecies(){
-  const pool = [];
-  YY.SPIRIT_ORDER.forEach(id => {
-    for(let i = 0; i < SPAWN_WEIGHT[YY.SPIRITS[id].r]; i++) pool.push(id);
-  });
-  return pool[Math.floor(Math.random() * pool.length)];
-}
-
-/* ---------- 精靈的 3D 造型:簡單小生物,顏色依種類決定 ---------- */
-function buildSpiritMesh(speciesId){
-  const S = YY.SPIRITS[speciesId];
-  const g = new THREE.Group();
-  const body = YY.M(new THREE.SphereGeometry(.24, 14, 10), S.c, { transparent:true, opacity:.95 });
-  body.scale.set(1, .9, 1);
-  g.add(body);
-  [-1, 1].forEach(s => {
-    const eye = YY.M(new THREE.SphereGeometry(.04, 8, 6), 0x2C4034);
-    eye.position.set(s * .09, .05, .21);
-    g.add(eye);
-  });
-  if(S.flying){
-    [-1, 1].forEach(s => {
-      const w = YY.M(new THREE.SphereGeometry(.12, 10, 8), S.c, { transparent:true, opacity:.6 });
-      w.scale.set(1, .5, .18);
-      w.position.set(s * .26, .12, -.05);
-      w.rotation.z = s * .5;
-      w.userData.flap = { side: s };
-      g.add(w);
-    });
+/* ---------- 進 / 出森林:房間 ↔ 森林 場景切換 ---------- */
+YY.enterForest = function(){
+  YY.showForest(true);
+  const cre = YY.cre;
+  if(cre){
+    cre.hiding = false; cre.doze = false; cre.goal = null;
+    cre.x = YY.forestSpawn.x; cre.z = YY.forestSpawn.z;
+    cre.tx = cre.x; cre.tz = cre.z - 2;   // 往森林中央走幾步
   }
-  g.userData.speciesId = speciesId;
-  g.traverse(o => { if(o.isMesh) o.castShadow = true; });
-  return g;
-}
+  YY.forestCam.fpv = false;
+  YY.exploreWalk._lx = cre ? cre.x : 0; YY.exploreWalk._ly = cre ? cre.z : 0;
+  nextSpawnAt = 0; nextEggAt = YY.now() + YY.rand(4000, 9000);
+  if(YY.renderForestHint) YY.renderForestHint();
+};
+YY.leaveForest = function(){
+  cleanupForest();
+  YY.showForest(false);
+  YY.tryForestCamPreview(false);
+  const cre = YY.cre;
+  if(cre){ cre.x = 0; cre.z = 1.2; cre.tx = 0; cre.tz = 1.2; }
+};
 
-/* ---------- 場上目前的野生精靈(同時最多 2 隻) ---------- */
-let spirits = [];             // { uid, speciesId, mesh, x,z,tx,tz, state, wanderAt }
+/* ---------- 場上野生生物:寵物 or 精靈(同時最多 3 隻) ---------- */
+let wild = [];        // { uid, kind, species, mesh, x,z,tx,tz, state, wanderAt }
 let nextSpawnAt = 0;
-let uidSeq = 0;
-YY.spiritGroup = new THREE.Group();   // 給 main.js raycast 用
+YY.spiritGroup = new THREE.Group();   // 沿用舊名,給 raycast 用(其實裝的是所有野生生物)
+YY.eggGroup = new THREE.Group();
 let groupAdded = false;
 
-function spawnSpirit(){
-  const speciesId = pickSpiritSpecies();
-  const mesh = buildSpiritMesh(speciesId);
-  const x = YY.rand(-3.2, 3.2), z = YY.rand(-2, 2.8);
+function speciesInfo(w){
+  return w.kind === 'pet' ? YY.PETS[w.species] : YY.SPIRITS[w.species];
+}
+
+function spawnWild(){
+  /* 一半機率生寵物、一半生精靈,種類再依稀有度加權 */
+  const kind = Math.random() < .5 ? 'pet' : 'spirit';
+  const species = kind === 'pet' ? YY.pickPetSpecies() : YY.pickSpiritSpecies();
+  const mesh = kind === 'pet' ? YY.buildPetMesh(species, 0) : YY.buildSpiritMesh(species);
+  const a = Math.random() * Math.PI * 2, r = YY.rand(3, 7);
+  const x = Math.cos(a) * r, z = Math.sin(a) * r - 1;
   mesh.position.set(x, .3, z);
-  const uid = 'sp' + (uidSeq++);
+  const uid = YY.newUid('wild');
   mesh.userData.uid = uid;
   YY.spiritGroup.add(mesh);
-  spirits.push({ uid, speciesId, mesh, x, z, tx:x, tz:z, state:'wander', wanderAt:0 });
+  wild.push({ uid, kind, species, mesh, x, z, tx:x, tz:z, state:'wander', wanderAt:0 });
+}
+function removeWild(w){
+  YY.spiritGroup.remove(w.mesh);
+  wild = wild.filter(o => o !== w);
+  if(YY.exploreTarget === w.uid) YY.exploreTarget = null;
 }
 
-function removeSpirit(sp){
-  YY.spiritGroup.remove(sp.mesh);
-  spirits = spirits.filter(s => s !== sp);
-  if(YY.exploreTarget === sp.uid) YY.exploreTarget = null;
+/* ---------- 蛋:森林裡出現,可撿起 ---------- */
+let nextEggAt = 0;
+function spawnEggOnGround(){
+  const g = new THREE.Group();
+  const shell = YY.M(new THREE.SphereGeometry(.24, 14, 12), 0xF5EAD0);
+  shell.scale.set(1, 1.25, 1); shell.position.y = .26;
+  const dot1 = YY.M(new THREE.SphereGeometry(.05, 8, 6), 0xF2A0B5); dot1.position.set(.1, .3, .18);
+  const dot2 = YY.M(new THREE.SphereGeometry(.05, 8, 6), 0x8FCBE6); dot2.position.set(-.08, .2, .2);
+  g.add(shell, dot1, dot2);
+  const a = Math.random() * Math.PI * 2, r = YY.rand(2.5, 6);
+  g.position.set(Math.cos(a) * r, 0, Math.sin(a) * r - 1);
+  const uid = YY.newUid('groundegg');
+  g.userData.eggUid = uid;
+  g.traverse(o => { if(o.isMesh){ o.castShadow = true; o.userData.eggUid = uid; } });
+  YY.eggGroup.add(g);
 }
 
-/* ---------- 選中一隻精靈(點擊觸發) ---------- */
+/* ---------- 選中一隻野生生物 ---------- */
 YY.exploreTarget = null;
-function selectSpiritByUid(uid){
+function selectWildByUid(uid){
   YY.exploreTarget = uid;
-  const sp = spirits.find(s => s.uid === uid);
-  const S = sp && YY.SPIRITS[sp.speciesId];
-  YY.flash(S ? `盯上了「${S.n}」!按「🫐 誘捕」丟顆莓果引牠過來` : '選中一隻精靈', 2600);
+  const w = wild.find(o => o.uid === uid);
+  if(!w) return;
+  const info = speciesInfo(w);
+  const label = w.kind === 'pet' ? '寵物' : '精靈';
+  YY.flash(`盯上了${label}「${info.n}」!按「🫐 誘捕」丟顆莓果引牠過來`, 3000);
 }
 
-/* 給 main.js 呼叫:傳入 NDC 座標(-1~1)做點擊判定 */
+/* 給 main.js 呼叫:NDC 座標點擊判定(蛋 → 野生生物 → 地面走路) */
 const _ray = new THREE.Raycaster();
 const _ndc = new THREE.Vector2();
 YY.handleExploreTap = function(ndcX, ndcY){
   _ndc.set(ndcX, ndcY);
   _ray.setFromCamera(_ndc, YY.camera);
 
-  const spiritHits = YY.spiritGroup.children.length ? _ray.intersectObject(YY.spiritGroup, true) : [];
-  if(spiritHits.length){
-    let obj = spiritHits[0].object;
-    while(obj && !obj.userData.uid) obj = obj.parent;
-    if(obj) selectSpiritByUid(obj.userData.uid);
+  /* 先看有沒有點到蛋 */
+  if(YY.eggGroup.children.length){
+    const eh = _ray.intersectObject(YY.eggGroup, true);
+    if(eh.length){
+      let obj = eh[0].object; while(obj && !obj.userData.eggUid) obj = obj.parent;
+      if(obj){
+        YY.eggGroup.remove(obj);
+        YY.spawnPuff(obj.position.x, .4, obj.position.z);
+        YY.addEgg();
+        return;
+      }
+    }
+  }
+  /* 再看野生生物 */
+  const hits = YY.spiritGroup.children.length ? _ray.intersectObject(YY.spiritGroup, true) : [];
+  if(hits.length){
+    let obj = hits[0].object; while(obj && !obj.userData.uid) obj = obj.parent;
+    if(obj) selectWildByUid(obj.userData.uid);
     return;
   }
-  if(YY.floor){
-    const floorHits = _ray.intersectObject(YY.floor, true);
-    if(floorHits.length) walkTo(floorHits[0].point.x, floorHits[0].point.z);
+  /* 都沒有 → 點地面走過去 */
+  if(YY.forestFloor){
+    const fh = _ray.intersectObject(YY.forestFloor, true);
+    if(fh.length) walkTo(fh[0].point.x, fh[0].point.z);
   }
 };
 
-/* ---------- 散步 / 運動:點地板走過去,走久了偶爾給點小獎勵 ---------- */
-YY.exploreWalk = { dist:0, nextRewardAt: YY.rand(18, 30) };
 function walkTo(x, z){
   const cre = YY.cre; if(!cre) return;
-  cre.tx = YY.clamp(x, -4, 4);
-  cre.tz = YY.clamp(z, -3, 3.2);
+  cre.tx = YY.clamp(x, -12, 12);
+  cre.tz = YY.clamp(z, -12, 12);
 }
 
-/* ---------- 誘捕:丟莓果引導選中的精靈過去 ---------- */
+/* ---------- 誘捕:丟莓果引導選中的野生生物 ---------- */
 let lureBerry = null;
 YY.throwLureBerry = function(){
-  if(!YY.exploreTarget){ YY.flash('先點一隻精靈,才能丟莓果引誘牠喔!', 2400); return; }
-  const sp = spirits.find(s => s.uid === YY.exploreTarget);
-  if(!sp){ YY.exploreTarget = null; YY.flash('那隻精靈已經不見了,再找一隻試試!', 2400); return; }
+  if(!YY.exploreTarget){ YY.flash('先點一隻精靈或寵物,才能丟莓果引誘牠喔!', 2600); return; }
+  const w = wild.find(o => o.uid === YY.exploreTarget);
+  if(!w){ YY.exploreTarget = null; YY.flash('那隻已經不見了,再找一隻試試!', 2400); return; }
   if(lureBerry){ YY.flash('地上已經有一顆誘餌莓果了!', 2200); return; }
 
   const g = new THREE.Group();
@@ -2714,111 +3224,220 @@ YY.throwLureBerry = function(){
   const leaf = new THREE.Mesh(new THREE.SphereGeometry(.08, 8, 6), YY.mat(0x6FA25E));
   leaf.scale.set(1.4, .5, .7); leaf.position.y = .4;
   g.add(b, leaf);
-  const x = sp.x + YY.rand(-.4, .4), z = sp.z + YY.rand(-.4, .4);
+  const x = w.x + YY.rand(-.4, .4), z = w.z + YY.rand(-.4, .4);
   g.position.set(x, 0, z);
   YY.scene.add(g);
   YY.sfx.pop();
-
   lureBerry = { g, x, z };
-  sp.state = 'lured'; sp.tx = x; sp.tz = z;
+  w.state = 'lured'; w.tx = x; w.tz = z;
 };
 
-function resolveCatch(sp){
-  const S = YY.SPIRITS[sp.speciesId];
-  const chance = CATCH_CHANCE[S.r];
-  const success = Math.random() < chance;
-  const firstTime = !YY.metSpirits.includes(sp.speciesId);
+function resolveCatch(w){
+  const info = speciesInfo(w);
+  const success = Math.random() < YY.catchChance(info.r);
 
   if(success){
-    if(firstTime) YY.metSpirits.push(sp.speciesId);
-    YY.save();
     YY.sfx.tada();
-    YY.spawnConfetti(sp.x, .6, sp.z, S.r === 2 ? 40 : 24);
-    YY.flash(firstTime
-      ? `🎉 首次捕獲!「${S.n}」加入精靈圖鑑了!`
-      : `捕獲成功!「${S.n}」又被抓到一隻~`, 3600);
-    YY.addTickets(S.r === 2 ? 3 : S.r === 1 ? 2 : 1, `捕獲「${S.n}」的獎勵`);
-    removeSpirit(sp);
+    YY.spawnConfetti(w.x, .6, w.z, info.r === 2 ? 44 : 26);
+    if(w.kind === 'pet'){
+      const firstTime = !YY.metPets.includes(w.species);
+      YY.addPet(w.species);
+      YY.flash(firstTime
+        ? `🎉 首次捕獲寵物!「${info.n}」加入!去「家族→我的寵物」設牠當散步夥伴吧`
+        : `捕獲成功!寵物「${info.n}」又收服一隻~`, 4200);
+    } else {
+      const firstTime = !YY.metSpirits.includes(w.species);
+      YY.addHomeSpirit(w.species);
+      YY.flash(firstTime
+        ? `🎉 首次捕獲精靈!「${info.n}」住進你家了(精靈只會待在家喔)`
+        : `捕獲成功!精靈「${info.n}」也住進你家~`, 4200);
+    }
+    YY.addTickets(info.r === 2 ? 3 : info.r === 1 ? 2 : 1, `捕獲「${info.n}」的獎勵`);
+    removeWild(w);
   } else {
-    YY.flash(`「${S.n}」吃完莓果就溜走了……下次再試試!`, 2800);
-    sp.state = 'fleeing';
-    const away = Math.atan2(sp.x - (YY.cre ? YY.cre.x : 0), sp.z - (YY.cre ? YY.cre.z : 0));
-    sp.tx = YY.clamp(sp.x + Math.sin(away) * 3, -4, 4);
-    sp.tz = YY.clamp(sp.z + Math.cos(away) * 3, -3, 3.2);
+    YY.flash(`「${info.n}」吃完莓果就溜走了……下次再試試!`, 3000);
+    w.state = 'fleeing';
+    const cx = YY.cre ? YY.cre.x : 0, cz = YY.cre ? YY.cre.z : 0;
+    const away = Math.atan2(w.x - cx, w.z - cz);
+    w.tx = YY.clamp(w.x + Math.sin(away) * 6, -12, 12);
+    w.tz = YY.clamp(w.z + Math.cos(away) * 6, -12, 12);
   }
 }
 
-/* ---------- 每幀更新:精靈閒晃 / 被引誘 / 逃跑,以及誘餌莓果動畫 ---------- */
+/* ---------- 散步小獎勵 + 寵物進化 + 蛋孵化 ---------- */
+YY.exploreWalk = { dist:0, nextRewardAt: YY.rand(18, 30) };
+
+/* ---------- 每幀更新 ---------- */
 YY.updateExplore = function(t, dt){
   if(YY.mode !== 'explore'){
-    /* 離開探索世界時清乾淨,回來再重新開始 */
-    if(spirits.length || lureBerry) cleanupExplore();
+    if(wild.length || lureBerry || YY.eggGroup.children.length) cleanupForest();
     return;
   }
 
-  if(spirits.length < 2 && t > nextSpawnAt){
-    spawnSpirit();
-    nextSpawnAt = t + YY.rand(6000, 14000);
-  }
+  if(wild.length < 3 && t > nextSpawnAt){ spawnWild(); nextSpawnAt = t + YY.rand(4500, 10000); }
+  if(YY.eggGroup.children.length < 2 && t > nextEggAt){ spawnEggOnGround(); nextEggAt = t + YY.rand(12000, 24000); }
 
-  for(const sp of spirits.slice()){
-    const dx = sp.tx - sp.x, dz = sp.tz - sp.z;
-    const dist = Math.hypot(dx, dz);
+  for(const w of wild.slice()){
+    const dx = w.tx - w.x, dz = w.tz - w.z, dist = Math.hypot(dx, dz);
     if(dist > .06){
-      const spSpeed = (sp.state === 'fleeing' ? 2.6 : 1.1) * dt;
-      sp.x += dx / dist * Math.min(spSpeed, dist);
-      sp.z += dz / dist * Math.min(spSpeed, dist);
-      sp.mesh.rotation.y += (Math.atan2(dx, dz) - sp.mesh.rotation.y) * .1;
-    } else if(sp.state === 'wander' && t > sp.wanderAt){
-      sp.wanderAt = t + YY.rand(2500, 5500);
-      sp.tx = YY.clamp(sp.x + YY.rand(-1.4, 1.4), -3.6, 3.6);
-      sp.tz = YY.clamp(sp.z + YY.rand(-1.2, 1.2), -2.6, 3);
-    } else if(sp.state === 'lured' && lureBerry){
-      /* 到莓果旁邊了 → 吃掉、判定捕獲 */
+      const sp = (w.state === 'fleeing' ? 3.0 : 1.1) * dt;
+      w.x += dx / dist * Math.min(sp, dist);
+      w.z += dz / dist * Math.min(sp, dist);
+      w.mesh.rotation.y += (Math.atan2(dx, dz) - w.mesh.rotation.y) * .1;
+    } else if(w.state === 'wander' && t > w.wanderAt){
+      w.wanderAt = t + YY.rand(2500, 5500);
+      w.tx = YY.clamp(w.x + YY.rand(-2, 2), -8, 8);
+      w.tz = YY.clamp(w.z + YY.rand(-2, 2), -8, 8);
+    } else if(w.state === 'lured' && lureBerry){
       YY.scene.remove(lureBerry.g);
       YY.spawnPuff(lureBerry.x, .3, lureBerry.z);
       YY.sfx.munch();
       lureBerry = null;
-      resolveCatch(sp);
-    } else if(sp.state === 'fleeing'){
-      removeSpirit(sp);
+      resolveCatch(w);
+    } else if(w.state === 'fleeing'){
+      removeWild(w);
     }
-    const hop = Math.abs(Math.sin(t / 130 + sp.uid.length)) * (dist > .06 ? .18 : 0);
-    sp.mesh.position.set(sp.x, .3 + hop, sp.z);
-    sp.mesh.children.forEach(ch => {
-      if(ch.userData.flap){
-        const f = Math.sin(t / 90) * .3;
-        ch.rotation.z = ch.userData.flap.side * (.5 + f);
-      }
+    const hop = Math.abs(Math.sin(t / 130 + w.uid.length)) * (dist > .06 ? .18 : 0);
+    w.mesh.position.set(w.x, .3 + hop, w.z);
+    w.mesh.children.forEach(ch => {
+      if(ch.userData.flap){ const f = Math.sin(t / 90) * .3; ch.rotation.z = ch.userData.flap.side * (.5 + f); }
     });
   }
 
-  /* 散步運動小獎勵 */
+  /* 蛋在地上輕輕搖 */
+  YY.eggGroup.children.forEach((e, i) => { e.rotation.z = Math.sin(t / 400 + i) * .12; });
+
+  /* 散步:累積距離 → 好感度 / 寵物進化 / 蛋孵化 */
   const cre = YY.cre;
   if(cre){
     const W = YY.exploreWalk;
-    const dx = cre.x - (W._lx ?? cre.x), dz = cre.z - (W._lz ?? cre.z);
-    W.dist += Math.hypot(dx, dz);
-    W._lx = cre.x; W._lz = cre.z;
+    const dx = cre.x - (W._lx ?? cre.x), dz = cre.z - (W._ly ?? cre.z);
+    const step = Math.hypot(dx, dz);
+    W.dist += step;
+    W._lx = cre.x; W._ly = cre.z;
+    if(step > 0.0005){
+      YY.addWalkToActivePet(step);     // #4 帶去散步 → 進化
+      YY.progressEggs(step, dt);       // #6 邊散步邊孵蛋
+    }
     if(W.dist > W.nextRewardAt){
       W.nextRewardAt = W.dist + YY.rand(18, 30);
       YY.bumpTrust(1);
-      if(Math.random() < .4) YY.flash(`散步運動好舒服~${cre.def.n}的好感度悄悄 +1`, 2200);
+      if(Math.random() < .4) YY.flash('一起散步好舒服~好感度悄悄 +1', 2200);
     }
   }
 };
 
-function cleanupExplore(){
-  spirits.slice().forEach(sp => YY.spiritGroup.remove(sp.mesh));
-  spirits = [];
+function cleanupForest(){
+  wild.slice().forEach(w => YY.spiritGroup.remove(w.mesh));
+  wild = [];
+  YY.eggGroup.children.slice().forEach(e => YY.eggGroup.remove(e));
   if(lureBerry){ YY.scene.remove(lureBerry.g); lureBerry = null; }
   YY.exploreTarget = null;
   nextSpawnAt = 0;
 }
 
-/* 場景初始化後把精靈群組掛進去(只需一次) */
+/* 場景初始化後把兩個群組掛進森林(只需一次) */
 YY.ensureSpiritGroup = function(){
-  if(!groupAdded && YY.scene){ YY.scene.add(YY.spiritGroup); groupAdded = true; }
+  if(!groupAdded && YY.scene){
+    if(YY.forestGroup){ YY.forestGroup.add(YY.spiritGroup); YY.forestGroup.add(YY.eggGroup); }
+    else { YY.scene.add(YY.spiritGroup); YY.scene.add(YY.eggGroup); }
+    groupAdded = true;
+  }
+};
+})();
+
+</script>
+<script>
+/* ============================================================
+   home.js — 家裡的精靈 + 蛋的孵化
+   #2 精靈只會待在家:在房間裡輕輕飄來飄去,不會跟出門
+   #6 森林撿到的蛋:在家孵化,時間到就變成一隻精靈住進家裡
+   ============================================================ */
+(function(){
+
+/* ---------- 家裡的精靈(只在房間出現) ---------- */
+let homeMeshes = [];   // { uid, sp, mesh, x, z, tx, tz, wanderAt, bobT }
+YY.homeSpiritGroup = null;
+
+function ensureGroup(){
+  if(!YY.homeSpiritGroup){
+    YY.homeSpiritGroup = new THREE.Group();
+    (YY.roomGroup || YY.scene).add(YY.homeSpiritGroup);
+  }
+}
+
+YY.rebuildHomeSpirits = function(){
+  ensureGroup();
+  homeMeshes.forEach(h => YY.homeSpiritGroup.remove(h.mesh));
+  homeMeshes = [];
+  (YY.homeSpirits || []).forEach((s, i) => {
+    const mesh = YY.buildSpiritMesh(s.sp);
+    const a = i / Math.max(1, YY.homeSpirits.length) * Math.PI * 2;
+    const x = Math.cos(a) * YY.rand(1.6, 3), z = -1 + Math.sin(a) * YY.rand(1.6, 3);
+    mesh.position.set(x, .3, z);
+    YY.homeSpiritGroup.add(mesh);
+    homeMeshes.push({ uid:s.uid, sp:s.sp, mesh, x, z, tx:x, tz:z, wanderAt:0, bobT:Math.random() * 10 });
+  });
+};
+
+YY.updateHomeSpirits = function(t, dt){
+  if(YY.mode === 'explore') return;   // 精靈只待在家,出門時不更新(而且已被 roomGroup 隱藏)
+  for(const h of homeMeshes){
+    const dx = h.tx - h.x, dz = h.tz - h.z, dist = Math.hypot(dx, dz);
+    if(dist > .06){
+      const sp = .7 * dt;
+      h.x += dx / dist * Math.min(sp, dist);
+      h.z += dz / dist * Math.min(sp, dist);
+      h.mesh.rotation.y += (Math.atan2(dx, dz) - h.mesh.rotation.y) * .08;
+    } else if(t > h.wanderAt){
+      h.wanderAt = t + YY.rand(3000, 7000);
+      h.tx = YY.clamp(h.x + YY.rand(-1.6, 1.6), -3.4, 3.4);
+      h.tz = YY.clamp(h.z + YY.rand(-1.4, 1.4), -3, 2.6);
+    }
+    h.bobT += dt * 3;
+    const hop = Math.abs(Math.sin(h.bobT)) * .12;
+    h.mesh.position.set(h.x, .3 + hop, h.z);
+    h.mesh.children.forEach(ch => {
+      if(ch.userData.flap){ const f = Math.sin(t / 90) * .3; ch.rotation.z = ch.userData.flap.side * (.5 + f); }
+      if(ch.userData.glow) ch.material.opacity = .14 + Math.sin(t / 500 + h.bobT) * .07;
+    });
+  }
+};
+
+/* ---------- 蛋的孵化 ----------
+   撿到蛋 → 放進孵化器,散步累積 or 時間流逝會讓孵化進度前進,滿了就破殼 */
+YY.EGG_HATCH = 100;   // 孵化所需進度
+YY.addEgg = function(){
+  const species = YY.pickSpiritSpecies();      // 蛋裡是哪隻精靈,先藏起來,孵出才知道
+  const egg = { uid: YY.newUid('egg'), sp: species, prog: 0 };
+  YY.eggs.push(egg);
+  YY.save();
+  YY.flash('🥚 撿到一顆蛋!帶回家會慢慢孵化(散步或等待都會加快),孵出來是一隻精靈!', 4200);
+  YY.sfx.pop();
+  return egg;
+};
+/* 進度來源:①森林散步(walkUnits)②時間自然孵(dt) */
+YY.progressEggs = function(walkUnits, dt){
+  if(!YY.eggs || !YY.eggs.length) return;
+  let hatched = null;
+  for(const egg of YY.eggs){
+    egg.prog += (walkUnits || 0) * 6 + (dt || 0) * 1.4;   // 散步孵得比較快
+    if(egg.prog >= YY.EGG_HATCH){ hatched = egg; break; }
+  }
+  if(hatched){
+    YY.eggs = YY.eggs.filter(e => e !== hatched);
+    const S = YY.SPIRITS[hatched.sp];
+    const firstTime = !YY.metSpirits.includes(hatched.sp);
+    YY.addHomeSpirit(hatched.sp);
+    YY.sfx.tada();
+    if(YY.cre) YY.spawnConfetti(YY.cre.x, 1.6, YY.cre.z, 30);
+    YY.flash(firstTime
+      ? `🐣 蛋孵化了!首次發現「${S.n}」——牠住進你家了!`
+      : `🐣 蛋孵化了!又一隻「${S.n}」住進你家!`, 4200);
+    if(document.getElementById('family') && document.getElementById('family').classList.contains('on') && YY.renderFamily)
+      YY.renderFamily();
+  }
+  YY.save();
 };
 })();
 
@@ -2848,7 +3467,7 @@ YY.initToyBall = function(){
   stripe.rotation.x = Math.PI / 2;
   g.add(b, stripe);
   g.position.set(-2.2, .3, -.8);
-  YY.scene.add(g);
+  (YY.roomGroup || YY.scene).add(g);
   YY.ball = { g, x:-2.2, z:-.8, vx:0, vz:0 };
 };
 function updateBall(dt){
@@ -3263,6 +3882,8 @@ YY.initPanels();
 YY.initBerry();
 YY.initToyBall();
 YY.initVision();
+if(YY.rebuildHomeSpirits) YY.rebuildHomeSpirits();
+if(YY.refreshActivePet) YY.refreshActivePet();
 $('#trustFill').style.width = YY.trust + '%';
 
 function renderModeUI(){
@@ -3284,14 +3905,26 @@ function renderModeUI(){
   });
   const berryBtn = $('#btnBerry');
   berryBtn.textContent = YY.mode === 'explore' ? '🫐 誘捕' : '🫐 餵莓果';
+  const eyeBtn = $('#btnEye');
+  if(eyeBtn){
+    if(YY.mode === 'explore'){
+      eyeBtn.textContent = YY.forestCam && YY.forestCam.fpv ? '🐾 牙牙視角' : '🐾 切視角';
+      eyeBtn.classList.toggle('live', !!(YY.forestCam && YY.forestCam.fpv));
+    } else if(YY.renderEyeBtnDefault){
+      YY.renderEyeBtnDefault();
+    }
+  }
 }
-YY.onModeChange = function(m){
+YY.renderForestHint = renderModeUI;
+YY.onModeChange = function(m, prev){
   renderModeUI();
+  if(prev === 'explore' && m !== 'explore'){ YY.leaveForest(); }
   if(m === 'focus'){
     YY.flash('進入 Focus Mode!互動模式的功能先鎖起來,專心感受牠陪你的樣子', 3400);
     if(YY.setPiP) YY.setPiP(true);
   } else if(m === 'explore'){
-    YY.flash('🌲 進入牙牙森林!點地板散步、點精靈選中牠、按「🫐 誘捕」丟莓果引誘', 4200);
+    YY.enterForest();
+    YY.flash('🌲 走出房間門,來到牙牙森林!點地板散步、點精靈/寵物選中牠、按「🫐 誘捕」丟莓果,還能撿蛋帶回家孵化', 5200);
     if(YY.setPiP) YY.setPiP(false);
   } else if(YY.setPiP){
     YY.setPiP(false);
@@ -3323,8 +3956,9 @@ function setPtr(e){
 function hitTest(){
   ray.setFromCamera(ptr, YY.camera);
   const creHit = ray.intersectObject(YY.cre.root, true).length > 0;
-  const macHit = ray.intersectObject(YY.machine, true).length > 0;
-  return { creHit, macHit };
+  const macHit = YY.machine ? ray.intersectObject(YY.machine, true).length > 0 : false;
+  const doorHit = YY.roomDoor ? ray.intersectObject(YY.roomDoor, true).length > 0 : false;
+  return { creHit, macHit, doorHit };
 }
 
 dom.addEventListener('pointerdown', e => {
@@ -3351,13 +3985,19 @@ dom.addEventListener('pointermove', e => {
   if(pointers.size === 2){
     const [a, b] = [...pointers.values()];
     const d = Math.hypot(a.x - b.x, a.y - b.y);
-    YY.cam.radius *= pinchD / Math.max(1, d);
+    if(YY.mode === 'explore'){ YY.forestCam.tpRadius *= pinchD / Math.max(1, d); }
+    else { YY.cam.radius *= pinchD / Math.max(1, d); YY.updateCam(); }
     pinchD = d;
-    YY.updateCam();
     return;
   }
   if(!dragging) return;
   moved += Math.abs(dx) + Math.abs(dy);
+  if(YY.mode === 'explore'){
+    const F = YY.forestCam;
+    if(F.fpv){ F.yaw -= dx * .006; }                       // 第一人稱:左右張望
+    else { F.tpTheta -= dx * .0055; F.tpPhi -= dy * .004; } // 第三人稱:繞著牠轉
+    return;
+  }
   YY.cam.theta -= dx * .0055;
   YY.cam.phi   -= dy * .004;
   YY.updateCam();
@@ -3374,8 +4014,12 @@ dom.addEventListener('pointerup', e => {
       YY.handleExploreTap(ptr.x, ptr.y);
       return;
     }
-    const { creHit, macHit } = hitTest();
-    if(creHit) pet();
+    const { creHit, macHit, doorHit } = hitTest();
+    if(doorHit){
+      if(YY.canEnterMode('explore')) YY.setMode('explore');
+      else YY.flash('Focus Mode 進行中,請先關閉才能出門', 2600);
+    }
+    else if(creHit) pet();
     else if(macHit) YY.drawGacha();
   }
 });
@@ -3386,6 +4030,7 @@ document.addEventListener('visibilitychange', () => {
   else { YY.mouse.lastMove = YY.now(); YY.mouse.inside = true; }
 });
 dom.addEventListener('wheel', e => {
+  if(YY.mode === 'explore'){ YY.forestCam.tpRadius *= 1 + Math.sign(e.deltaY) * .08; return; }
   YY.cam.radius *= 1 + Math.sign(e.deltaY) * .08;
   YY.updateCam();
 }, { passive:true });
@@ -3448,13 +4093,18 @@ function loop(){
   YY.updatePiP(t);
   YY.updateCreature(YY.cre, dt, t);
   YY.updateCompanion(dt, t);
-  YY.updateSelfPlay(t, dt);
+  YY.updateHomeSpirits(t, dt);
+  if(YY.mode !== 'explore'){
+    YY.updateSelfPlay(t, dt);
+    updateWander(t);
+  }
   YY.updateCapsule(dt);
   YY.updateParticles(dt);
   YY.updateButterfly(t, dt);
   YY.updateVisits(t);
   YY.updateExplore(t, dt);
-  updateWander(t);
+
+  if(YY.mode === 'explore') YY.updateForestCam(t);
 
   /* 扭蛋機搖晃 */
   const m = YY.machine;

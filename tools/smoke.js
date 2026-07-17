@@ -36,7 +36,7 @@ THREE.WebGLRenderer = function(){ return {
 global.THREE = THREE;
 global.AudioContext = undefined;
 
-for(const f of ['config.js','items.js','family.js','focus.js','vision.js','creature.js','world.js','gacha.js','events.js','companion.js','explore.js','selfplay.js','pip.js','main.js']){
+for(const f of ['config.js','items.js','beings.js','family.js','focus.js','vision.js','creature.js','world.js','forest.js','gacha.js','events.js','companion.js','explore.js','home.js','selfplay.js','pip.js','main.js']){
   const code = fs.readFileSync(path.join(root, 'js', f), 'utf8');
   try{ eval(code); }catch(e){ console.error('❌ 載入失敗:', f, e); process.exit(1); }
   console.log('✅ 載入', f);
@@ -226,5 +226,49 @@ if(!resolved) throw new Error('丟莓果誘捕後,精靈一直沒有解析結果
 console.log('✅ 誘捕流程 OK(捕獲或逃跑其中一種結果都正常),精靈圖鑑', G.metSpirits.join(',') || '(尚無捕獲)');
 
 G.setMode('interact');
+
+// 18) 寵物系統:初始寵物存在、可新增、常散步會進化
+if(!G.getPet(G.activePet)) throw new Error('沒有初始散步夥伴(activePet)');
+const petCountBefore = G.ownedPets.length;
+const np = G.addPet('starcat');
+if(G.ownedPets.length !== petCountBefore + 1) throw new Error('addPet 沒有新增寵物');
+G.setActivePet(np.uid);
+G.refreshActivePet();
+if(G.activePet !== np.uid) throw new Error('setActivePet 沒有生效');
+const stage0 = G.petStage(np);
+for(let i = 0; i < 200; i++) G.addWalkToActivePet(1);   // 累積散步距離觸發進化
+const stageAfter = G.petStage(G.getPet(np.uid));
+if(!(stageAfter > stage0)) throw new Error('常散步後寵物沒有進化(階段沒提升)');
+console.log('✅ 寵物系統 OK:新增/設為夥伴/散步進化', G.STAGE_TITLE[stage0], '→', G.STAGE_TITLE[stageAfter]);
+
+// 19) 家中精靈:只在家生成、更新不噴錯
+G.rebuildHomeSpirits();
+for(let i = 0; i < 30; i++){ tick(16); G.updateHomeSpirits(t, 0.016); }
+if(!G.homeSpiritGroup) throw new Error('沒有 homeSpiritGroup');
+console.log('✅ 家中精靈 OK:場上', G.homeSpiritGroup.children.length, '隻(只在家出現)');
+
+// 20) 森林檢蛋 → 孵化精靈
+const spiritDexBefore = G.homeSpirits.length;
+const egg = G.addEgg();
+if(!egg || !G.eggs.length) throw new Error('addEgg 沒有新增蛋');
+for(let i = 0; i < 5000 && G.eggs.length; i++){ tick(16); G.progressEggs(3, 0.016); }
+if(G.eggs.length) throw new Error('蛋一直沒孵化');
+if(G.homeSpirits.length <= spiritDexBefore) throw new Error('蛋孵化後沒有得到新精靈');
+console.log('✅ 森林檢蛋孵化 OK:孵出後家中精靈數', spiritDexBefore, '→', G.homeSpirits.length);
+
+// 21) 森林:進門切場景、牙牙視角(第一人稱)/第三人稱切換、相機更新不噴錯
+G.setMode('explore');
+if(!G.forestGroup || !G.forestGroup.visible) throw new Error('進入森林後 forestGroup 沒有顯示');
+if(G.roomGroup && G.roomGroup.visible) throw new Error('進入森林後房間 roomGroup 應該隱藏');
+const fpv0 = G.forestCam.fpv;
+G.toggleForestFPV();
+if(G.forestCam.fpv === fpv0) throw new Error('toggleForestFPV 沒有切換視角');
+for(let i = 0; i < 60; i++){ tick(16); G.updateForestCam(t); }
+G.toggleForestFPV();
+for(let i = 0; i < 60; i++){ tick(16); G.updateForestCam(t); }
+console.log('✅ 森林場景 + 牙牙視角/第三人稱切換 + 相機更新 OK');
+G.setMode('interact');
+if(!(G.roomGroup && G.roomGroup.visible)) throw new Error('離開森林後房間沒有恢復顯示');
+console.log('✅ 離開森林 → 房間場景恢復 OK');
 
 console.log('\n🎉 全部煙霧測試通過!圖鑑總數:', G.ITEM_COUNT);

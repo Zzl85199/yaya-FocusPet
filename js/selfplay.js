@@ -22,7 +22,7 @@ YY.initToyBall = function(){
   stripe.rotation.x = Math.PI / 2;
   g.add(b, stripe);
   g.position.set(-2.2, .3, -.8);
-  YY.scene.add(g);
+  (YY.roomGroup || YY.scene).add(g);
   YY.ball = { g, x:-2.2, z:-.8, vx:0, vz:0 };
 };
 function updateBall(dt){

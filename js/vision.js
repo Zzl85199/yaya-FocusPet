@@ -59,6 +59,8 @@ async function loadFaceLandmarkOffline(){
 /* ---------- 開關鏡頭 ---------- */
 async function enableCamera(){
   const A = YY.attention;
+  /* 在森林裡:「🎯」改成切換第一/第三人稱視角(#5),不進入 Focus Mode */
+  if(YY.mode === 'explore'){ YY.toggleForestFPV(); return; }
   if(A.camera === 'on'){ disableCamera(); return; }
   if(!window.faceapi || !navigator.mediaDevices){
     YY.flash('這個環境沒辦法用鏡頭,改用游標感應', 3000);
@@ -188,9 +190,11 @@ YY.updateAttention = function(t){
 /* ---------- 介面 ---------- */
 function renderEyeBtn(){
   const b = $('#btnEye'); if(!b) return;
+  if(YY.mode === 'explore') return;   // 森林裡的按鈕文字交給 main 的 renderModeUI 管
   b.textContent = { off:'🎯 Focus Mode', starting:'🎯 啟動中…', on:'🎯 專注中', denied:'🎯 Focus Mode' }[YY.attention.camera];
   b.classList.toggle('live', YY.attention.camera === 'on');
 }
+YY.renderEyeBtnDefault = renderEyeBtn;
 function renderStatus(){
   const el = $('#watchState'); if(!el) return;
   el.textContent = YY.attention.watching ? '👀 牠知道你在看' : '🍃 你不在,自己玩中';

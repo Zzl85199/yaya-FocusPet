@@ -186,7 +186,8 @@ function renderFamily(){
       <small>${met ? F.rel : '還沒來訪'}</small>
     </div>`;
   }
-  body.innerHTML = html + '</div>' + renderVariantSection() + renderSpiritSection();
+  body.innerHTML = html + '</div>' + renderPetSection() + renderEggSection()
+    + renderVariantSection() + renderSpiritSection();
   body.querySelectorAll('.fcard[data-id]').forEach(card => {
     card.onclick = () => {
       const id = card.dataset.id;
@@ -201,6 +202,65 @@ function renderFamily(){
       renderFamily();
     };
   });
+  /* 「設為散步夥伴」按鈕 */
+  body.querySelectorAll('button[data-pet]').forEach(b => {
+    b.onclick = () => {
+      YY.setActivePet(b.dataset.pet);
+      YY.flash(`帶「${YY.petDisplayName(YY.getPet(b.dataset.pet))}」一起!去牙牙森林散步就會慢慢進化~`, 3600);
+      renderFamily();
+    };
+  });
+}
+
+/* ---------- 🐾 我的寵物(會跟隨 + 可帶去散步進化) ---------- */
+function renderPetSection(){
+  const pets = YY.ownedPets || [];
+  let html = `<div class="fintro" style="margin-top:18px;">🐾 <b>我的寵物</b>——會跟著你到處走。
+    去牙牙森林用莓果誘捕新寵物,選一隻「設為散步夥伴」,常帶去散步就會進化!
+    (已收集 ${(YY.metPets||[]).length} / ${YY.PET_ORDER.length} 種)</div>`;
+  if(!pets.length){
+    html += `<div class="wempty">還沒有寵物,去森林誘捕一隻吧!</div>`;
+    return html;
+  }
+  html += `<div class="petlist">`;
+  pets.forEach(pet => {
+    const P = YY.PETS[pet.sp]; if(!P) return;
+    const prog = YY.petStageProgress(pet);
+    const active = YY.activePet === pet.uid;
+    const col = '#' + P.c.toString(16).padStart(6, '0');
+    const bar = prog.st >= 2
+      ? `<span class="petmax">★ 完全體</span>`
+      : `<div class="petbar"><i style="width:${prog.pct}%"></i></div>
+         <small>再散步約 ${prog.need} 步進化</small>`;
+    html += `<div class="petrow ${active ? 'on' : ''}">
+      <div class="dot" style="background:${col}"></div>
+      <div class="petinfo"><b>${P.n}</b> <em>${YY.STAGE_TITLE[prog.st]}</em>${bar}</div>
+      <button data-pet="${pet.uid}" class="${active ? 'on' : ''}">${active ? '散步夥伴' : '帶牠去'}</button>
+    </div>`;
+  });
+  return html + `</div>`;
+}
+
+/* ---------- 🥚 孵蛋器(森林撿到的蛋在這裡孵成精靈) ---------- */
+function renderEggSection(){
+  const eggs = YY.eggs || [];
+  let html = `<div class="fintro" style="margin-top:18px;">🥚 <b>孵蛋器</b>——在牙牙森林撿到的蛋放這裡,
+    散步或等待都會加快孵化,孵出來是一隻精靈,會住進你家。</div>`;
+  if(!eggs.length){
+    html += `<div class="wempty">目前沒有蛋。去森林地上找找看!</div>`;
+    return html;
+  }
+  html += `<div class="petlist">`;
+  eggs.forEach((egg, i) => {
+    const pct = Math.min(100, Math.round(egg.prog / YY.EGG_HATCH * 100));
+    html += `<div class="petrow">
+      <div class="dot" style="background:#F5EAD0">🥚</div>
+      <div class="petinfo"><b>神秘的蛋 #${i + 1}</b>
+        <div class="petbar"><i style="width:${pct}%"></i></div>
+        <small>孵化 ${pct}%</small></div>
+    </div>`;
+  });
+  return html + `</div>`;
 }
 function renderVariantSection(){
   if(!YY.VARIANT_ORDER || !YY.VARIANT_ORDER.length) return '';
@@ -221,8 +281,10 @@ function renderVariantSection(){
 }
 function renderSpiritSection(){
   if(!YY.SPIRIT_ORDER || !YY.SPIRIT_ORDER.length) return '';
-  let html = `<div class="fintro" style="margin-top:18px;">🫐 <b>精靈圖鑑</b>——去「探索世界」用莓果誘捕野生精靈
-    (已捕獲 ${YY.metSpirits.length} / ${YY.SPIRIT_ORDER.length})</div><div class="fgrid">`;
+  const homeCount = (YY.homeSpirits || []).length;
+  let html = `<div class="fintro" style="margin-top:18px;">🫐 <b>精靈圖鑑</b>——精靈只會待在家。
+    去牙牙森林用莓果誘捕、或撿蛋帶回家孵化,牠們就會住進房間裡陪你。
+    (目前家裡有 ${homeCount} 隻・圖鑑 ${YY.metSpirits.length} / ${YY.SPIRIT_ORDER.length} 種)</div><div class="fgrid">`;
   for(const id of YY.SPIRIT_ORDER){
     const S = YY.SPIRITS[id];
     const met = YY.metSpirits.includes(id);

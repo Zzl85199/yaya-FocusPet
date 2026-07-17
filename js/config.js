@@ -87,6 +87,8 @@ YY.save = function(){
       t: YY.tickets, o: YY.owned, w: YY.wear,
       f: YY.metFamily, cur: YY.currentChar, tr: Math.round(YY.trust),
       v: YY.metVariants, sp: YY.metSpirits,
+      op: YY.ownedPets, ap: YY.activePet, hs: YY.homeSpirits,
+      eg: YY.eggs, mp: YY.metPets,
     }));
   }catch(e){}
 };
@@ -95,17 +97,33 @@ YY.load = function(){
   YY.wear = { head:null, face:null, neck:null, back:null, aura:null };
   YY.metFamily = ['yaya']; YY.currentChar = 'yaya'; YY.trust = 12;
   YY.metVariants = []; YY.metSpirits = [];
+  YY.ownedPets = []; YY.activePet = null; YY.homeSpirits = [];
+  YY.eggs = []; YY.metPets = [];
+  let fresh = true;
   try{
     const g = JSON.parse(localStorage.getItem('yy3d') || 'null');
     if(g){
+      fresh = false;
       YY.tickets = g.t ?? 6; YY.owned = g.o || [];
       YY.wear = Object.assign(YY.wear, g.w || {});
       YY.metFamily = g.f || ['yaya']; YY.currentChar = g.cur || 'yaya';
       YY.trust = g.tr ?? 12;
       YY.metVariants = g.v || [];
       YY.metSpirits = g.sp || [];
+      YY.ownedPets = g.op || [];
+      YY.activePet = g.ap ?? null;
+      YY.homeSpirits = g.hs || [];
+      YY.eggs = g.eg || [];
+      YY.metPets = g.mp || [];
     }
   }catch(e){}
+  /* 第一次玩:送一隻起始寵物,讓牙寶一開始就有夥伴陪 */
+  if(fresh && YY.PETS){
+    const starter = { uid:'pet_starter', sp:'cottonbun', walks:0 };
+    YY.ownedPets = [starter];
+    YY.activePet = starter.uid;
+    YY.metPets = ['cottonbun'];
+  }
 };
 
 /* ---------- 提示泡泡 ---------- */

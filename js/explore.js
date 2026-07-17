@@ -1,126 +1,138 @@
 /* ============================================================
-   explore.js — 探索世界(牙牙森林)
-   #5 散步/運動:點地板走過去;野生精靈會在場景裡閒晃
-   #6 用莓果誘捕精靈:選中一隻精靈 → 丟莓果引牠過去 → 吃完判定捕獲
+   explore.js — 牙牙森林(房間外的世界)裡發生的事
+   #1 走出房間門 → 森林場景;精靈與寵物都在森林誘捕
+   #3 用莓果誘捕「寵物」和「精靈」,有機率成功 / 失敗
+   #4 帶著選定的寵物散步 → 累積距離會進化
+   #6 森林裡會出現蛋,點一下撿起來帶回家孵化
    ============================================================ */
 (function(){
-const $ = s => document.querySelector(s);
 
-/* ---------- 精靈圖鑑資料(共 6 種,含普通/稀有/傳說) ---------- */
-YY.SPIRITS = {
-  leaf:   { n:'葉葉精靈', c:0x8FCB6E, r:0 },
-  dew:    { n:'露露精靈', c:0x8FCBE6, r:0 },
-  pebble: { n:'石石精靈', c:0xC4A47A, r:0 },
-  moth:   { n:'蛾蛾精靈', c:0xB79BE8, r:1, flying:true },
-  ember:  { n:'燼燼精靈', c:0xF2984A, r:1 },
-  moon:   { n:'月月精靈', c:0xE8E4D4, r:2 },
-};
-YY.SPIRIT_ORDER = ['leaf', 'dew', 'pebble', 'moth', 'ember', 'moon'];
-const CATCH_CHANCE = [.7, .42, .18];     // 依稀有度 r:0/1/2
-const SPAWN_WEIGHT = { 0:30, 1:12, 2:4 };
-
-function pickSpiritSpecies(){
-  const pool = [];
-  YY.SPIRIT_ORDER.forEach(id => {
-    for(let i = 0; i < SPAWN_WEIGHT[YY.SPIRITS[id].r]; i++) pool.push(id);
-  });
-  return pool[Math.floor(Math.random() * pool.length)];
-}
-
-/* ---------- 精靈的 3D 造型:簡單小生物,顏色依種類決定 ---------- */
-function buildSpiritMesh(speciesId){
-  const S = YY.SPIRITS[speciesId];
-  const g = new THREE.Group();
-  const body = YY.M(new THREE.SphereGeometry(.24, 14, 10), S.c, { transparent:true, opacity:.95 });
-  body.scale.set(1, .9, 1);
-  g.add(body);
-  [-1, 1].forEach(s => {
-    const eye = YY.M(new THREE.SphereGeometry(.04, 8, 6), 0x2C4034);
-    eye.position.set(s * .09, .05, .21);
-    g.add(eye);
-  });
-  if(S.flying){
-    [-1, 1].forEach(s => {
-      const w = YY.M(new THREE.SphereGeometry(.12, 10, 8), S.c, { transparent:true, opacity:.6 });
-      w.scale.set(1, .5, .18);
-      w.position.set(s * .26, .12, -.05);
-      w.rotation.z = s * .5;
-      w.userData.flap = { side: s };
-      g.add(w);
-    });
+/* ---------- 進 / 出森林:房間 ↔ 森林 場景切換 ---------- */
+YY.enterForest = function(){
+  YY.showForest(true);
+  const cre = YY.cre;
+  if(cre){
+    cre.hiding = false; cre.doze = false; cre.goal = null;
+    cre.x = YY.forestSpawn.x; cre.z = YY.forestSpawn.z;
+    cre.tx = cre.x; cre.tz = cre.z - 2;   // 往森林中央走幾步
   }
-  g.userData.speciesId = speciesId;
-  g.traverse(o => { if(o.isMesh) o.castShadow = true; });
-  return g;
-}
+  YY.forestCam.fpv = false;
+  YY.exploreWalk._lx = cre ? cre.x : 0; YY.exploreWalk._ly = cre ? cre.z : 0;
+  nextSpawnAt = 0; nextEggAt = YY.now() + YY.rand(4000, 9000);
+  if(YY.renderForestHint) YY.renderForestHint();
+};
+YY.leaveForest = function(){
+  cleanupForest();
+  YY.showForest(false);
+  YY.tryForestCamPreview(false);
+  const cre = YY.cre;
+  if(cre){ cre.x = 0; cre.z = 1.2; cre.tx = 0; cre.tz = 1.2; }
+};
 
-/* ---------- 場上目前的野生精靈(同時最多 2 隻) ---------- */
-let spirits = [];             // { uid, speciesId, mesh, x,z,tx,tz, state, wanderAt }
+/* ---------- 場上野生生物:寵物 or 精靈(同時最多 3 隻) ---------- */
+let wild = [];        // { uid, kind, species, mesh, x,z,tx,tz, state, wanderAt }
 let nextSpawnAt = 0;
-let uidSeq = 0;
-YY.spiritGroup = new THREE.Group();   // 給 main.js raycast 用
+YY.spiritGroup = new THREE.Group();   // 沿用舊名,給 raycast 用(其實裝的是所有野生生物)
+YY.eggGroup = new THREE.Group();
 let groupAdded = false;
 
-function spawnSpirit(){
-  const speciesId = pickSpiritSpecies();
-  const mesh = buildSpiritMesh(speciesId);
-  const x = YY.rand(-3.2, 3.2), z = YY.rand(-2, 2.8);
+function speciesInfo(w){
+  return w.kind === 'pet' ? YY.PETS[w.species] : YY.SPIRITS[w.species];
+}
+
+function spawnWild(){
+  /* 一半機率生寵物、一半生精靈,種類再依稀有度加權 */
+  const kind = Math.random() < .5 ? 'pet' : 'spirit';
+  const species = kind === 'pet' ? YY.pickPetSpecies() : YY.pickSpiritSpecies();
+  const mesh = kind === 'pet' ? YY.buildPetMesh(species, 0) : YY.buildSpiritMesh(species);
+  const a = Math.random() * Math.PI * 2, r = YY.rand(3, 7);
+  const x = Math.cos(a) * r, z = Math.sin(a) * r - 1;
   mesh.position.set(x, .3, z);
-  const uid = 'sp' + (uidSeq++);
+  const uid = YY.newUid('wild');
   mesh.userData.uid = uid;
   YY.spiritGroup.add(mesh);
-  spirits.push({ uid, speciesId, mesh, x, z, tx:x, tz:z, state:'wander', wanderAt:0 });
+  wild.push({ uid, kind, species, mesh, x, z, tx:x, tz:z, state:'wander', wanderAt:0 });
+}
+function removeWild(w){
+  YY.spiritGroup.remove(w.mesh);
+  wild = wild.filter(o => o !== w);
+  if(YY.exploreTarget === w.uid) YY.exploreTarget = null;
 }
 
-function removeSpirit(sp){
-  YY.spiritGroup.remove(sp.mesh);
-  spirits = spirits.filter(s => s !== sp);
-  if(YY.exploreTarget === sp.uid) YY.exploreTarget = null;
+/* ---------- 蛋:森林裡出現,可撿起 ---------- */
+let nextEggAt = 0;
+function spawnEggOnGround(){
+  const g = new THREE.Group();
+  const shell = YY.M(new THREE.SphereGeometry(.24, 14, 12), 0xF5EAD0);
+  shell.scale.set(1, 1.25, 1); shell.position.y = .26;
+  const dot1 = YY.M(new THREE.SphereGeometry(.05, 8, 6), 0xF2A0B5); dot1.position.set(.1, .3, .18);
+  const dot2 = YY.M(new THREE.SphereGeometry(.05, 8, 6), 0x8FCBE6); dot2.position.set(-.08, .2, .2);
+  g.add(shell, dot1, dot2);
+  const a = Math.random() * Math.PI * 2, r = YY.rand(2.5, 6);
+  g.position.set(Math.cos(a) * r, 0, Math.sin(a) * r - 1);
+  const uid = YY.newUid('groundegg');
+  g.userData.eggUid = uid;
+  g.traverse(o => { if(o.isMesh){ o.castShadow = true; o.userData.eggUid = uid; } });
+  YY.eggGroup.add(g);
 }
 
-/* ---------- 選中一隻精靈(點擊觸發) ---------- */
+/* ---------- 選中一隻野生生物 ---------- */
 YY.exploreTarget = null;
-function selectSpiritByUid(uid){
+function selectWildByUid(uid){
   YY.exploreTarget = uid;
-  const sp = spirits.find(s => s.uid === uid);
-  const S = sp && YY.SPIRITS[sp.speciesId];
-  YY.flash(S ? `盯上了「${S.n}」!按「🫐 誘捕」丟顆莓果引牠過來` : '選中一隻精靈', 2600);
+  const w = wild.find(o => o.uid === uid);
+  if(!w) return;
+  const info = speciesInfo(w);
+  const label = w.kind === 'pet' ? '寵物' : '精靈';
+  YY.flash(`盯上了${label}「${info.n}」!按「🫐 誘捕」丟顆莓果引牠過來`, 3000);
 }
 
-/* 給 main.js 呼叫:傳入 NDC 座標(-1~1)做點擊判定 */
+/* 給 main.js 呼叫:NDC 座標點擊判定(蛋 → 野生生物 → 地面走路) */
 const _ray = new THREE.Raycaster();
 const _ndc = new THREE.Vector2();
 YY.handleExploreTap = function(ndcX, ndcY){
   _ndc.set(ndcX, ndcY);
   _ray.setFromCamera(_ndc, YY.camera);
 
-  const spiritHits = YY.spiritGroup.children.length ? _ray.intersectObject(YY.spiritGroup, true) : [];
-  if(spiritHits.length){
-    let obj = spiritHits[0].object;
-    while(obj && !obj.userData.uid) obj = obj.parent;
-    if(obj) selectSpiritByUid(obj.userData.uid);
+  /* 先看有沒有點到蛋 */
+  if(YY.eggGroup.children.length){
+    const eh = _ray.intersectObject(YY.eggGroup, true);
+    if(eh.length){
+      let obj = eh[0].object; while(obj && !obj.userData.eggUid) obj = obj.parent;
+      if(obj){
+        YY.eggGroup.remove(obj);
+        YY.spawnPuff(obj.position.x, .4, obj.position.z);
+        YY.addEgg();
+        return;
+      }
+    }
+  }
+  /* 再看野生生物 */
+  const hits = YY.spiritGroup.children.length ? _ray.intersectObject(YY.spiritGroup, true) : [];
+  if(hits.length){
+    let obj = hits[0].object; while(obj && !obj.userData.uid) obj = obj.parent;
+    if(obj) selectWildByUid(obj.userData.uid);
     return;
   }
-  if(YY.floor){
-    const floorHits = _ray.intersectObject(YY.floor, true);
-    if(floorHits.length) walkTo(floorHits[0].point.x, floorHits[0].point.z);
+  /* 都沒有 → 點地面走過去 */
+  if(YY.forestFloor){
+    const fh = _ray.intersectObject(YY.forestFloor, true);
+    if(fh.length) walkTo(fh[0].point.x, fh[0].point.z);
   }
 };
 
-/* ---------- 散步 / 運動:點地板走過去,走久了偶爾給點小獎勵 ---------- */
-YY.exploreWalk = { dist:0, nextRewardAt: YY.rand(18, 30) };
 function walkTo(x, z){
   const cre = YY.cre; if(!cre) return;
-  cre.tx = YY.clamp(x, -4, 4);
-  cre.tz = YY.clamp(z, -3, 3.2);
+  cre.tx = YY.clamp(x, -12, 12);
+  cre.tz = YY.clamp(z, -12, 12);
 }
 
-/* ---------- 誘捕:丟莓果引導選中的精靈過去 ---------- */
+/* ---------- 誘捕:丟莓果引導選中的野生生物 ---------- */
 let lureBerry = null;
 YY.throwLureBerry = function(){
-  if(!YY.exploreTarget){ YY.flash('先點一隻精靈,才能丟莓果引誘牠喔!', 2400); return; }
-  const sp = spirits.find(s => s.uid === YY.exploreTarget);
-  if(!sp){ YY.exploreTarget = null; YY.flash('那隻精靈已經不見了,再找一隻試試!', 2400); return; }
+  if(!YY.exploreTarget){ YY.flash('先點一隻精靈或寵物,才能丟莓果引誘牠喔!', 2600); return; }
+  const w = wild.find(o => o.uid === YY.exploreTarget);
+  if(!w){ YY.exploreTarget = null; YY.flash('那隻已經不見了,再找一隻試試!', 2400); return; }
   if(lureBerry){ YY.flash('地上已經有一顆誘餌莓果了!', 2200); return; }
 
   const g = new THREE.Group();
@@ -129,110 +141,124 @@ YY.throwLureBerry = function(){
   const leaf = new THREE.Mesh(new THREE.SphereGeometry(.08, 8, 6), YY.mat(0x6FA25E));
   leaf.scale.set(1.4, .5, .7); leaf.position.y = .4;
   g.add(b, leaf);
-  const x = sp.x + YY.rand(-.4, .4), z = sp.z + YY.rand(-.4, .4);
+  const x = w.x + YY.rand(-.4, .4), z = w.z + YY.rand(-.4, .4);
   g.position.set(x, 0, z);
   YY.scene.add(g);
   YY.sfx.pop();
-
   lureBerry = { g, x, z };
-  sp.state = 'lured'; sp.tx = x; sp.tz = z;
+  w.state = 'lured'; w.tx = x; w.tz = z;
 };
 
-function resolveCatch(sp){
-  const S = YY.SPIRITS[sp.speciesId];
-  const chance = CATCH_CHANCE[S.r];
-  const success = Math.random() < chance;
-  const firstTime = !YY.metSpirits.includes(sp.speciesId);
+function resolveCatch(w){
+  const info = speciesInfo(w);
+  const success = Math.random() < YY.catchChance(info.r);
 
   if(success){
-    if(firstTime) YY.metSpirits.push(sp.speciesId);
-    YY.save();
     YY.sfx.tada();
-    YY.spawnConfetti(sp.x, .6, sp.z, S.r === 2 ? 40 : 24);
-    YY.flash(firstTime
-      ? `🎉 首次捕獲!「${S.n}」加入精靈圖鑑了!`
-      : `捕獲成功!「${S.n}」又被抓到一隻~`, 3600);
-    YY.addTickets(S.r === 2 ? 3 : S.r === 1 ? 2 : 1, `捕獲「${S.n}」的獎勵`);
-    removeSpirit(sp);
+    YY.spawnConfetti(w.x, .6, w.z, info.r === 2 ? 44 : 26);
+    if(w.kind === 'pet'){
+      const firstTime = !YY.metPets.includes(w.species);
+      YY.addPet(w.species);
+      YY.flash(firstTime
+        ? `🎉 首次捕獲寵物!「${info.n}」加入!去「家族→我的寵物」設牠當散步夥伴吧`
+        : `捕獲成功!寵物「${info.n}」又收服一隻~`, 4200);
+    } else {
+      const firstTime = !YY.metSpirits.includes(w.species);
+      YY.addHomeSpirit(w.species);
+      YY.flash(firstTime
+        ? `🎉 首次捕獲精靈!「${info.n}」住進你家了(精靈只會待在家喔)`
+        : `捕獲成功!精靈「${info.n}」也住進你家~`, 4200);
+    }
+    YY.addTickets(info.r === 2 ? 3 : info.r === 1 ? 2 : 1, `捕獲「${info.n}」的獎勵`);
+    removeWild(w);
   } else {
-    YY.flash(`「${S.n}」吃完莓果就溜走了……下次再試試!`, 2800);
-    sp.state = 'fleeing';
-    const away = Math.atan2(sp.x - (YY.cre ? YY.cre.x : 0), sp.z - (YY.cre ? YY.cre.z : 0));
-    sp.tx = YY.clamp(sp.x + Math.sin(away) * 3, -4, 4);
-    sp.tz = YY.clamp(sp.z + Math.cos(away) * 3, -3, 3.2);
+    YY.flash(`「${info.n}」吃完莓果就溜走了……下次再試試!`, 3000);
+    w.state = 'fleeing';
+    const cx = YY.cre ? YY.cre.x : 0, cz = YY.cre ? YY.cre.z : 0;
+    const away = Math.atan2(w.x - cx, w.z - cz);
+    w.tx = YY.clamp(w.x + Math.sin(away) * 6, -12, 12);
+    w.tz = YY.clamp(w.z + Math.cos(away) * 6, -12, 12);
   }
 }
 
-/* ---------- 每幀更新:精靈閒晃 / 被引誘 / 逃跑,以及誘餌莓果動畫 ---------- */
+/* ---------- 散步小獎勵 + 寵物進化 + 蛋孵化 ---------- */
+YY.exploreWalk = { dist:0, nextRewardAt: YY.rand(18, 30) };
+
+/* ---------- 每幀更新 ---------- */
 YY.updateExplore = function(t, dt){
   if(YY.mode !== 'explore'){
-    /* 離開探索世界時清乾淨,回來再重新開始 */
-    if(spirits.length || lureBerry) cleanupExplore();
+    if(wild.length || lureBerry || YY.eggGroup.children.length) cleanupForest();
     return;
   }
 
-  if(spirits.length < 2 && t > nextSpawnAt){
-    spawnSpirit();
-    nextSpawnAt = t + YY.rand(6000, 14000);
-  }
+  if(wild.length < 3 && t > nextSpawnAt){ spawnWild(); nextSpawnAt = t + YY.rand(4500, 10000); }
+  if(YY.eggGroup.children.length < 2 && t > nextEggAt){ spawnEggOnGround(); nextEggAt = t + YY.rand(12000, 24000); }
 
-  for(const sp of spirits.slice()){
-    const dx = sp.tx - sp.x, dz = sp.tz - sp.z;
-    const dist = Math.hypot(dx, dz);
+  for(const w of wild.slice()){
+    const dx = w.tx - w.x, dz = w.tz - w.z, dist = Math.hypot(dx, dz);
     if(dist > .06){
-      const spSpeed = (sp.state === 'fleeing' ? 2.6 : 1.1) * dt;
-      sp.x += dx / dist * Math.min(spSpeed, dist);
-      sp.z += dz / dist * Math.min(spSpeed, dist);
-      sp.mesh.rotation.y += (Math.atan2(dx, dz) - sp.mesh.rotation.y) * .1;
-    } else if(sp.state === 'wander' && t > sp.wanderAt){
-      sp.wanderAt = t + YY.rand(2500, 5500);
-      sp.tx = YY.clamp(sp.x + YY.rand(-1.4, 1.4), -3.6, 3.6);
-      sp.tz = YY.clamp(sp.z + YY.rand(-1.2, 1.2), -2.6, 3);
-    } else if(sp.state === 'lured' && lureBerry){
-      /* 到莓果旁邊了 → 吃掉、判定捕獲 */
+      const sp = (w.state === 'fleeing' ? 3.0 : 1.1) * dt;
+      w.x += dx / dist * Math.min(sp, dist);
+      w.z += dz / dist * Math.min(sp, dist);
+      w.mesh.rotation.y += (Math.atan2(dx, dz) - w.mesh.rotation.y) * .1;
+    } else if(w.state === 'wander' && t > w.wanderAt){
+      w.wanderAt = t + YY.rand(2500, 5500);
+      w.tx = YY.clamp(w.x + YY.rand(-2, 2), -8, 8);
+      w.tz = YY.clamp(w.z + YY.rand(-2, 2), -8, 8);
+    } else if(w.state === 'lured' && lureBerry){
       YY.scene.remove(lureBerry.g);
       YY.spawnPuff(lureBerry.x, .3, lureBerry.z);
       YY.sfx.munch();
       lureBerry = null;
-      resolveCatch(sp);
-    } else if(sp.state === 'fleeing'){
-      removeSpirit(sp);
+      resolveCatch(w);
+    } else if(w.state === 'fleeing'){
+      removeWild(w);
     }
-    const hop = Math.abs(Math.sin(t / 130 + sp.uid.length)) * (dist > .06 ? .18 : 0);
-    sp.mesh.position.set(sp.x, .3 + hop, sp.z);
-    sp.mesh.children.forEach(ch => {
-      if(ch.userData.flap){
-        const f = Math.sin(t / 90) * .3;
-        ch.rotation.z = ch.userData.flap.side * (.5 + f);
-      }
+    const hop = Math.abs(Math.sin(t / 130 + w.uid.length)) * (dist > .06 ? .18 : 0);
+    w.mesh.position.set(w.x, .3 + hop, w.z);
+    w.mesh.children.forEach(ch => {
+      if(ch.userData.flap){ const f = Math.sin(t / 90) * .3; ch.rotation.z = ch.userData.flap.side * (.5 + f); }
     });
   }
 
-  /* 散步運動小獎勵 */
+  /* 蛋在地上輕輕搖 */
+  YY.eggGroup.children.forEach((e, i) => { e.rotation.z = Math.sin(t / 400 + i) * .12; });
+
+  /* 散步:累積距離 → 好感度 / 寵物進化 / 蛋孵化 */
   const cre = YY.cre;
   if(cre){
     const W = YY.exploreWalk;
-    const dx = cre.x - (W._lx ?? cre.x), dz = cre.z - (W._lz ?? cre.z);
-    W.dist += Math.hypot(dx, dz);
-    W._lx = cre.x; W._lz = cre.z;
+    const dx = cre.x - (W._lx ?? cre.x), dz = cre.z - (W._ly ?? cre.z);
+    const step = Math.hypot(dx, dz);
+    W.dist += step;
+    W._lx = cre.x; W._ly = cre.z;
+    if(step > 0.0005){
+      YY.addWalkToActivePet(step);     // #4 帶去散步 → 進化
+      YY.progressEggs(step, dt);       // #6 邊散步邊孵蛋
+    }
     if(W.dist > W.nextRewardAt){
       W.nextRewardAt = W.dist + YY.rand(18, 30);
       YY.bumpTrust(1);
-      if(Math.random() < .4) YY.flash(`散步運動好舒服~${cre.def.n}的好感度悄悄 +1`, 2200);
+      if(Math.random() < .4) YY.flash('一起散步好舒服~好感度悄悄 +1', 2200);
     }
   }
 };
 
-function cleanupExplore(){
-  spirits.slice().forEach(sp => YY.spiritGroup.remove(sp.mesh));
-  spirits = [];
+function cleanupForest(){
+  wild.slice().forEach(w => YY.spiritGroup.remove(w.mesh));
+  wild = [];
+  YY.eggGroup.children.slice().forEach(e => YY.eggGroup.remove(e));
   if(lureBerry){ YY.scene.remove(lureBerry.g); lureBerry = null; }
   YY.exploreTarget = null;
   nextSpawnAt = 0;
 }
 
-/* 場景初始化後把精靈群組掛進去(只需一次) */
+/* 場景初始化後把兩個群組掛進森林(只需一次) */
 YY.ensureSpiritGroup = function(){
-  if(!groupAdded && YY.scene){ YY.scene.add(YY.spiritGroup); groupAdded = true; }
+  if(!groupAdded && YY.scene){
+    if(YY.forestGroup){ YY.forestGroup.add(YY.spiritGroup); YY.forestGroup.add(YY.eggGroup); }
+    else { YY.scene.add(YY.spiritGroup); YY.scene.add(YY.eggGroup); }
+    groupAdded = true;
+  }
 };
 })();
