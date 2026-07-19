@@ -27,6 +27,7 @@ INTERACT_ONLY_BTNS.forEach(sel => {
 YY.switchCharacter(YY.currentChar, false);
 YY.cre.tx = 0; YY.cre.tz = 1.2; YY.cre.x = 0; YY.cre.z = 1.2;
 YY.initPanels();
+if(YY.initSecrets) YY.initSecrets();
 YY.initBerry();
 YY.initToyBall();
 YY.initVision();
@@ -73,6 +74,7 @@ YY.onModeChange = function(m, prev){
   } else if(m === 'explore'){
     YY.enterForest();
     YY.flash('🌲 走出房間門,來到牙牙森林!點地板散步、點精靈/寵物選中牠、按「🫐 誘捕」丟莓果,還能撿蛋帶回家孵化', 5200);
+    if(YY.tryRandomMedal) YY.tryRandomMedal(.12);
     if(YY.setPiP) YY.setPiP(false);
   } else if(YY.setPiP){
     YY.setPiP(false);
@@ -195,6 +197,8 @@ function pet(){
   YY.bumpTrust(2);                       // 摸摸會加好感度(順便更新那條進度條)
   YY.patCount = (YY.patCount || 0) + 1;
   if(YY.eggProgressPat) YY.eggProgressPat();
+  if(YY.addEvoProgress) YY.addEvoProgress('pat', 1);   // #3 撒嬌型寵物靠摸摸進化
+  if(YY.tryRandomMedal) YY.tryRandomMedal(.04);
   /* 扭蛋券改成「隨機掉落」,不再是摸幾下就一定有 */
   const chance = .14 + (YY.trust / 100) * .12;   // 好感度越高、掉券機率略高(約 14%~26%)
   if(Math.random() < chance){

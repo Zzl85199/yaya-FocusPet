@@ -62,6 +62,9 @@ YY.buildCharacter = function(charId){
   squash.add(sproutG);
   buildSprout(sproutG, F.sprout, face);
 
+  /* ---------- 家族專屬道具(拐杖 / 圍裙 / 披風 / 眼鏡…)每位家人不同特色 ---------- */
+  buildFamilyProps(squash, body, face, F.props);
+
   /* ---------- 異種特徵(Focus Mode 解鎖的飛行 / 閃亮異種) ---------- */
   let variantFX = null;
   if(F.variant === 'flying'){
@@ -177,6 +180,172 @@ function buildSprout(g, kind, face){
       b.position.y = .16; g.add(b);
       const pin = M(new THREE.CylinderGeometry(.02, .02, .4, 6), 0xC4704F);
       pin.rotation.z = 1.2; pin.position.y = .2; g.add(pin);
+      break;
+    }
+  }
+}
+
+/* ---------- 家族成員各自的專屬道具 ----------
+   每個道具都用基本幾何體手工搭出來,掛在 squash / body / face 上,
+   會跟著角色一起縮放、轉身,讓每位家人一眼就能認出來。 */
+function buildFamilyProps(squash, body, face, props){
+  if(!props || !props.length) return;
+  props.forEach(p => buildOneProp(squash, body, face, p));
+}
+function buildOneProp(squash, body, face, kind){
+  switch(kind){
+    /* 奶奶:拐杖(站在身體右側) */
+    case 'cane': {
+      const cane = new THREE.Group();
+      const shaft = M(new THREE.CylinderGeometry(.05, .06, 1.55, 8), 0xB5793E);
+      shaft.position.y = .78;
+      const handle = M(new THREE.TorusGeometry(.16, .05, 8, 14, Math.PI), 0x9C5F30);
+      handle.position.set(-.14, 1.5, 0); handle.rotation.z = -.2;
+      const tip = M(new THREE.SphereGeometry(.07, 8, 6), 0x6B4A28);
+      tip.position.y = 0;
+      cane.add(shaft, handle, tip);
+      cane.position.set(1.18, 0, .4);
+      cane.rotation.z = .12;
+      squash.add(cane);
+      break;
+    }
+    /* 奶奶 & 爸爸:圓框眼鏡(掛在臉上) */
+    case 'glasses': {
+      [-1, 1].forEach(s => {
+        const rim = M(new THREE.TorusGeometry(.17, .028, 8, 18), 0x3A342E);
+        rim.position.set(s * .34, .1, .3);
+        face.add(rim);
+        const lens = M(new THREE.CircleGeometry(.16, 18), 0xCFE6F0, { transparent:true, opacity:.32 });
+        lens.position.set(s * .34, .1, .29);
+        face.add(lens);
+      });
+      const bridge = M(new THREE.BoxGeometry(.2, .03, .03), 0x3A342E);
+      bridge.position.set(0, .12, .3); face.add(bridge);
+      break;
+    }
+    /* 奶奶:披肩(蓋在肩膀上) */
+    case 'shawl': {
+      const shawl = M(new THREE.SphereGeometry(1.06, 22, 14, 0, Math.PI * 2, Math.PI * .30, Math.PI * .42),
+        0xA893BE, { transparent:true, opacity:.96 });
+      shawl.scale.set(1.02, .95, 1.02);
+      shawl.position.y = .96;
+      squash.add(shawl);
+      const trim = M(new THREE.TorusGeometry(.86, .05, 8, 28), 0x8C77A6);
+      trim.rotation.x = Math.PI / 2; trim.position.y = 1.02;
+      squash.add(trim);
+      break;
+    }
+    /* 媽媽:圍裙(貼在身體正面) */
+    case 'apron': {
+      const apron = M(new THREE.CylinderGeometry(.52, .66, .95, 18, 1, true, -.6, 1.2),
+        0xF3E2E6);
+      apron.position.set(0, .62, .62);
+      apron.scale.z = .35;
+      squash.add(apron);
+      const pocket = M(new THREE.BoxGeometry(.32, .18, .04), 0xE7C9CF);
+      pocket.position.set(0, .5, .92); squash.add(pocket);
+      const strap = M(new THREE.TorusGeometry(.5, .04, 6, 20, Math.PI), 0xE7C9CF);
+      strap.position.set(0, 1.28, .3); strap.rotation.x = -.4;
+      squash.add(strap);
+      break;
+    }
+    /* 媽媽:木勺(拿在身體左側) */
+    case 'spoon': {
+      const spoon = new THREE.Group();
+      const stick = M(new THREE.CylinderGeometry(.035, .04, .7, 7), 0xC79A5E);
+      stick.position.y = .35;
+      const scoop = M(new THREE.SphereGeometry(.14, 12, 10), 0xD9AE72);
+      scoop.scale.set(1, .45, .8); scoop.position.y = .74;
+      spoon.add(stick, scoop);
+      spoon.position.set(-1.12, .35, .45);
+      spoon.rotation.z = -.35;
+      squash.add(spoon);
+      break;
+    }
+    /* 哥哥:英雄小披風(背後飄) */
+    case 'cape': {
+      const cape = M(new THREE.SphereGeometry(1.02, 22, 14, 0, Math.PI * 2, Math.PI * .22, Math.PI * .6),
+        0xE05A4A, { transparent:true, opacity:.95, side:THREE.DoubleSide });
+      cape.scale.set(1.04, 1.25, .55);
+      cape.position.set(0, .9, -.5);
+      squash.add(cape);
+      const collar = M(new THREE.TorusGeometry(.5, .07, 8, 20, Math.PI), 0xC7463A);
+      collar.position.set(0, 1.5, -.1); collar.rotation.x = .5;
+      squash.add(collar);
+      break;
+    }
+    /* 哥哥:頭帶(綁在額頭) */
+    case 'headband': {
+      const band = M(new THREE.TorusGeometry(.82, .07, 8, 24), 0x4C7CC4);
+      band.rotation.x = Math.PI / 2 - .18;
+      band.position.y = 1.62;
+      squash.add(band);
+      [-1, 1].forEach(s => {
+        const tail = M(new THREE.BoxGeometry(.08, .34, .04), 0x4C7CC4);
+        tail.position.set(s * .55, 1.5, -.55); tail.rotation.z = s * .3;
+        squash.add(tail);
+      });
+      break;
+    }
+    /* 妹妹:蝴蝶結(綁在頭側) */
+    case 'bow': {
+      const bow = new THREE.Group();
+      [-1, 1].forEach(s => {
+        const loop = M(new THREE.SphereGeometry(.16, 10, 8), 0xF25F86);
+        loop.scale.set(.9, 1.2, .4); loop.position.x = s * .16;
+        bow.add(loop);
+      });
+      const knot = M(new THREE.SphereGeometry(.08, 8, 8), 0xD94874);
+      bow.add(knot);
+      bow.position.set(.72, 1.5, .1);
+      squash.add(bow);
+      break;
+    }
+    /* 妹妹:愛心抱枕(抱在身體正前方) */
+    case 'heartplush': {
+      const heart = YY.heartGroup(0xFF8FA5, .26);
+      heart.position.set(0, .62, .74);
+      heart.scale.setScalar(1.1);
+      squash.add(heart);
+      break;
+    }
+    /* 爸爸:報紙(拿在身體前面) */
+    case 'newspaper': {
+      const paper = new THREE.Group();
+      const sheet = M(new THREE.BoxGeometry(.9, .66, .04), 0xF3EFE4);
+      const fold = M(new THREE.BoxGeometry(.03, .66, .05), 0xC9C2B0);
+      const l1 = M(new THREE.BoxGeometry(.7, .05, .06), 0x8A8478);
+      l1.position.set(0, .16, .03);
+      const l2 = l1.clone(); l2.position.y = .02;
+      const l3 = l1.clone(); l3.position.y = -.12;
+      paper.add(sheet, fold, l1, l2, l3);
+      paper.position.set(0, .74, .78);
+      paper.rotation.x = -.25;
+      squash.add(paper);
+      break;
+    }
+    /* 弟弟:竹蜻蜓帽(頭頂旋轉小螺旋槳) */
+    case 'beanie': {
+      const cap = M(new THREE.SphereGeometry(.6, 16, 10, 0, Math.PI * 2, 0, Math.PI * .5), 0x5AB0E0);
+      cap.position.y = 1.66; squash.add(cap);
+      const prop = new THREE.Group();
+      [-1, 1].forEach(s => {
+        const blade = M(new THREE.BoxGeometry(.5, .04, .12), 0xF2C14E);
+        blade.position.x = s * .28; prop.add(blade);
+      });
+      prop.position.y = 2.02;
+      prop.userData.spin = 6;   // creature.js 的動畫迴圈會轉它
+      squash.add(prop);
+      squash.userData.propeller = prop;
+      break;
+    }
+    /* 弟弟:玩具球(滾在腳邊) */
+    case 'toyball': {
+      const ball = M(new THREE.SphereGeometry(.3, 16, 12), 0xF25F5C);
+      ball.position.set(1.1, .3, .7);
+      const stripe = M(new THREE.TorusGeometry(.3, .05, 8, 20), 0xFFF1D6);
+      stripe.position.copy(ball.position); stripe.rotation.y = .5;
+      squash.add(ball, stripe);
       break;
     }
   }
@@ -308,6 +477,9 @@ YY.updateCreature = function(cre, dt, t){
       cre.mouth.position.x *= .9;
     }
   }
+
+  /* 弟弟的竹蜻蜓帽:螺旋槳一直轉 */
+  if(cre.squash.userData.propeller) cre.squash.userData.propeller.rotation.y += dt * 6;
 
   /* 異種特徵動畫:翅膀拍動 / 星星繞圈 / 光暈脈動 */
   if(cre.variantFX){

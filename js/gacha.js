@@ -104,6 +104,7 @@ function resolveDraw(id, pos){
   YY.save();
   YY.applyWear(cre);
   renderWardrobe();
+  if(YY.tryRandomMedal) YY.tryRandomMedal(.1);
 
   cre.squashV = -.4;                  // 開心一跳
   YY.sfx.chirp();
@@ -184,15 +185,19 @@ function renderFamily(){
     const prog = (!met && YY.familyUnlockProgress) ? YY.familyUnlockProgress(id) : null;
     const hint = prog ? `<div class="petbar" style="margin-top:4px;"><i style="width:${prog.pct}%"></i></div>
         <small>${prog.label} ${prog.cur}/${prog.need}${prog.unit}</small>` : '';
+    const metInfo = F.trait
+      ? `${F.rel}<br><span style="color:var(--leaf)">✨ ${F.trait}</span>`
+      : F.rel;
     html += `<div class="fcard ${met ? '' : 'lock'} ${now ? 'now' : ''}" data-id="${id}">
       <div class="dot" style="background:${met ? col : '#DDD'}"></div>
       <b>${met ? F.n : '???'}</b>
-      <small>${met ? F.rel : (prog ? prog.hint : '還沒來訪')}</small>
+      <small>${met ? metInfo : (prog ? prog.hint : '還沒來訪')}</small>
       ${hint}
     </div>`;
   }
   body.innerHTML = html + '</div>' + renderPetSection() + renderEggSection()
-    + renderVariantSection() + renderSpiritSection();
+    + renderVariantSection() + renderSpiritSection()
+    + (YY.renderMedalSection ? YY.renderMedalSection() : '');
   body.querySelectorAll('.fcard[data-id]').forEach(card => {
     card.onclick = () => {
       const id = card.dataset.id;
@@ -215,7 +220,9 @@ function renderFamily(){
   body.querySelectorAll('button[data-pet]').forEach(b => {
     b.onclick = () => {
       YY.setActivePet(b.dataset.pet);
-      YY.flash(`帶「${YY.petDisplayName(YY.getPet(b.dataset.pet))}」一起!去牙牙森林散步就會慢慢進化~`, 3600);
+      const pet = YY.getPet(b.dataset.pet);
+      const L = (YY.petStageProgress(pet).L) || { name:'散步進化', verb:'散步' };
+      YY.flash(`帶「${YY.petDisplayName(pet)}」一起!牠是「${L.name}」——多多${L.verb}就會慢慢進化~`, 3800);
       renderFamily();
     };
   });
@@ -225,8 +232,9 @@ function renderFamily(){
 function renderPetSection(){
   const pets = YY.ownedPets || [];
   let html = `<div class="fintro" style="margin-top:18px;">🐾 <b>我的寵物</b>——會跟著你到處走。
-    去牙牙森林用莓果誘捕新寵物,選一隻「設為散步夥伴」,常帶去散步就會進化!
-    (已收集 ${(YY.metPets||[]).length} / ${YY.PET_ORDER.length} 種)</div>`;
+    去牙牙森林誘捕新寵物,選一隻「設為散步夥伴」。<b>每種寵物的進化方式不一樣</b>——
+    有的要散步🚶、有的愛吃莓果🫐、有的想被摸摸✋、有的靠一起專注🎯、有的只想靜靜陪你🕰️,
+    進化也比以前慢,要多花點心思陪伴喔!(已收集 ${(YY.metPets||[]).length} / ${YY.PET_ORDER.length} 種)</div>`;
   if(!pets.length){
     html += `<div class="wempty">還沒有寵物,去森林誘捕一隻吧!</div>`;
     return html;
@@ -237,10 +245,11 @@ function renderPetSection(){
     const prog = YY.petStageProgress(pet);
     const active = YY.activePet === pet.uid;
     const col = '#' + P.c.toString(16).padStart(6, '0');
+    const L = prog.L || { icon:'🚶', name:'散步進化', unit:'步', verb:'散步' };
     const bar = prog.st >= 2
       ? `<span class="petmax">★ 完全體</span>`
       : `<div class="petbar"><i style="width:${prog.pct}%"></i></div>
-         <small>再散步約 ${prog.need} 步進化</small>`;
+         <small>${L.icon} ${L.name}・再${L.verb}約 ${prog.need} ${L.unit}進化</small>`;
     html += `<div class="petrow ${active ? 'on' : ''}">
       <div class="dot" style="background:${col}"></div>
       <div class="petinfo"><b>${P.n}</b> <em>${YY.STAGE_TITLE[prog.st]}</em>${bar}</div>
@@ -300,10 +309,13 @@ function renderSpiritSection(){
     const S = YY.SPIRITS[id];
     const met = YY.metSpirits.includes(id);
     const col = '#' + S.c.toString(16).padStart(6, '0');
+    const rar = S.r === 2 ? '傳說' : S.r === 1 ? '稀有' : '普通';
+    const desc = (YY.SPIRIT_DESC && YY.SPIRIT_DESC[id]) ? YY.SPIRIT_DESC[id] : '';
+    const info = met ? `${rar}${desc ? '<br><span style="color:var(--leaf)">✨ ' + desc + '</span>' : ''}` : '尚未捕獲';
     html += `<div class="fcard spirit ${met ? '' : 'lock'}">
       <div class="dot" style="background:${met ? col : '#DDD'}"></div>
       <b>${met ? S.n : '???'}</b>
-      <small>${met ? (S.r === 2 ? '傳說' : S.r === 1 ? '稀有' : '普通') : '尚未捕獲'}</small>
+      <small>${info}</small>
     </div>`;
   }
   return html + '</div>';

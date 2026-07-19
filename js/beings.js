@@ -29,21 +29,66 @@ YY.PETS = {
 };
 YY.PET_ORDER = Object.keys(YY.PETS);
 
-/* 帶去散步累積的距離門檻:0→1 需 24,1→2 再 40(共 64) */
-YY.PET_EVOLVE = [24, 64];
 YY.STAGE_TITLE = ['幼生', '成長', '完全體'];
+
+/* ============================================================
+   #3 進化系統:每種寵物有「不同的進化方式」,而且整體變慢
+   -----------------------------------------------------------
+   evo 方式(每種寵物專屬一種):
+     walk  🚶 帶去牙牙森林散步(累積距離)
+     berry 🫐 在家餵莓果(次數)
+     pat   ✋ 常常摸摸牠(次數)
+     focus 🎯 開眼神感應一起 Focus Mode(秒數)
+     time  🕰️ 讓牠當散步夥伴,靜靜陪你(秒數)
+   舊版只能靠散步、而且門檻只有 24/64 太快;現在門檻大幅提高。
+   ============================================================ */
+YY.PET_EVO = {
+  cottonbun:'walk',  pip:'walk',    hoppy:'walk',
+  fluff:'berry',     paddle:'berry',
+  mochi:'pat',       crystalfox:'pat',
+  spike:'focus',     ember:'focus',  starcat:'focus',
+  bubble:'time',     slowpoke:'time',
+  toffee:'walk',
+};
+YY.petEvoMethod = pet => YY.PET_EVO[pet.sp] || 'walk';
+
+/* 每種方式的兩段門檻(0→1、0→2);比舊版慢很多,單位各自不同 */
+YY.PET_EVO_NEED = {
+  walk:  [90, 240],    // 散步距離(世界單位)
+  berry: [6, 16],      // 餵莓果次數
+  pat:   [30, 80],     // 摸摸次數
+  focus: [180, 480],   // Focus 專注秒數
+  time:  [420, 1080],  // 當散步夥伴的陪伴秒數
+};
+YY.PET_EVO_LABEL = {
+  walk:  { icon:'🚶', name:'散步進化', unit:'步', verb:'散步' },
+  berry: { icon:'🫐', name:'美食進化', unit:'次', verb:'餵莓果' },
+  pat:   { icon:'✋', name:'親密進化', unit:'次', verb:'摸摸牠' },
+  focus: { icon:'🎯', name:'專注進化', unit:'秒', verb:'一起 Focus' },
+  time:  { icon:'🕰️', name:'陪伴進化', unit:'秒', verb:'讓牠陪著你' },
+};
+
+/* 取得某隻寵物目前累積的進度值(相容舊存檔:只有散步型才沿用舊 walks) */
+YY.petProgVal = function(pet){
+  if(pet.prog != null) return pet.prog;
+  return YY.petEvoMethod(pet) === 'walk' ? (pet.walks || 0) : 0;
+};
 YY.petStage = function(pet){
-  const w = pet.walks || 0;
-  if(w >= YY.PET_EVOLVE[1]) return 2;
-  if(w >= YY.PET_EVOLVE[0]) return 1;
+  const p = YY.petProgVal(pet);
+  const need = YY.PET_EVO_NEED[YY.petEvoMethod(pet)] || YY.PET_EVO_NEED.walk;
+  if(p >= need[1]) return 2;
+  if(p >= need[0]) return 1;
   return 0;
 };
 YY.petStageProgress = function(pet){
-  const st = YY.petStage(pet), w = pet.walks || 0;
-  if(st >= 2) return { st, pct:100, need:0, max:1 };
-  const lo = st === 0 ? 0 : YY.PET_EVOLVE[0];
-  const hi = YY.PET_EVOLVE[st];
-  return { st, pct: Math.round((w - lo) / (hi - lo) * 100), need: Math.ceil(hi - w), max: hi - lo };
+  const st = YY.petStage(pet), p = YY.petProgVal(pet);
+  const need = YY.PET_EVO_NEED[YY.petEvoMethod(pet)] || YY.PET_EVO_NEED.walk;
+  const L = YY.PET_EVO_LABEL[YY.petEvoMethod(pet)] || YY.PET_EVO_LABEL.walk;
+  if(st >= 2) return { st, pct:100, need:0, max:1, method:YY.petEvoMethod(pet), L };
+  const lo = st === 0 ? 0 : need[0];
+  const hi = need[st];
+  return { st, pct: Math.round((p - lo) / (hi - lo) * 100), need: Math.ceil(hi - p), max: hi - lo,
+    method:YY.petEvoMethod(pet), L };
 };
 YY.petDisplayName = function(pet){
   const P = YY.PETS[pet.sp]; if(!P) return '小寵物';
@@ -162,69 +207,70 @@ YY.buildSpiritMesh = function(speciesId){
   [-1, 1].forEach(s => { const eye = M(new THREE.SphereGeometry(.04, 8, 6), INK);
     eye.position.set(s * .09, .05, .21); g.add(eye); });
 
-  /* ---- 每種精靈的專屬外觀特徵 ---- */
+  /* ---- 每種精靈的專屬外觀特徵(都標記 spiritFeature 供動畫使用) ---- */
+  const tagF = m => { m.userData.spiritFeature = S.feature; return m; };
   switch(S.feature){
     case 'leafcap': {
       const leaf = M(new THREE.SphereGeometry(.09, 8, 6), 0x5C9A4A);
       leaf.scale.set(1.3, .3, .8); leaf.position.set(0, .27, 0); leaf.rotation.y = .4;
-      g.add(leaf);
+      g.add(tagF(leaf));
       break;
     }
     case 'droplet': {
       const drop = M(new THREE.SphereGeometry(.06, 8, 8), 0xCFE9F5, { transparent:true, opacity:.85 });
-      drop.scale.set(.8, 1.3, .8); drop.position.set(0, .32, .02); g.add(drop);
+      drop.scale.set(.8, 1.3, .8); drop.position.set(0, .32, .02); g.add(tagF(drop));
       break;
     }
     case 'rockbumps': {
       for(let i = 0; i < 3; i++){ const r = M(new THREE.SphereGeometry(.05, 8, 6), 0xA88A5E);
-        r.position.set((i - 1) * .09, .16, -.16); g.add(r); }
+        r.position.set((i - 1) * .09, .16, -.16); g.add(tagF(r)); }
       break;
     }
     case 'twinsprout': {
       [-1, 1].forEach(s => { const sp = M(new THREE.ConeGeometry(.03, .13, 5), 0x6FA25E);
-        sp.position.set(s * .06, .29, 0); sp.rotation.z = s * -.2; g.add(sp); });
+        sp.position.set(s * .06, .29, 0); sp.rotation.z = s * -.2; g.add(tagF(sp)); });
       break;
     }
     case 'petals': {
       for(let i = 0; i < 6; i++){ const a = i / 6 * Math.PI * 2;
         const p = M(new THREE.SphereGeometry(.06, 8, 6), 0xF7C7D6, { transparent:true, opacity:.9 });
         p.scale.set(1, .35, 1.3); p.position.set(Math.cos(a) * .2, -.08, Math.sin(a) * .2 * .6 + .05);
-        p.rotation.y = a; g.add(p); }
+        p.rotation.y = a; g.add(tagF(p)); }
       break;
     }
     case 'antennae': {
       [-1, 1].forEach(s => { const a = M(new THREE.CylinderGeometry(.012, .012, .14, 5), INK);
-        a.position.set(s * .06, .28, .06); a.rotation.z = s * -.4; g.add(a);
+        a.position.set(s * .06, .28, .06); a.rotation.z = s * -.4; g.add(tagF(a));
         const tip = M(new THREE.SphereGeometry(.02, 6, 6), INK); tip.position.set(s * .1, .34, .1); g.add(tip); });
       break;
     }
     case 'flame': {
       const flame = M(new THREE.ConeGeometry(.06, .16, 8), 0xF2C14E, { transparent:true, opacity:.9 });
-      flame.position.set(0, .32, 0); g.add(flame);
+      flame.position.set(0, .32, 0); g.add(tagF(flame));
       break;
     }
     case 'icespikes': {
       for(let i = 0; i < 4; i++){ const a = i / 4 * Math.PI * 2;
         const sp = M(new THREE.ConeGeometry(.04, .14, 5), 0xB8E6F0, { transparent:true, opacity:.85 });
         sp.position.set(Math.cos(a) * .19, .06, Math.sin(a) * .19);
-        sp.rotation.z = Math.cos(a) * -1.2; sp.rotation.x = Math.sin(a) * 1.2; g.add(sp); }
+        sp.rotation.z = Math.cos(a) * -1.2; sp.rotation.x = Math.sin(a) * 1.2; g.add(tagF(sp)); }
       break;
     }
     case 'bolt': {
       const bolt = M(new THREE.ConeGeometry(.03, .22, 4), 0xE8D63A);
-      bolt.position.set(0, .1, -.22); bolt.rotation.x = 2.4; bolt.rotation.z = .3; g.add(bolt);
+      bolt.position.set(0, .1, -.22); bolt.rotation.x = 2.4; bolt.rotation.z = .3; g.add(tagF(bolt));
       break;
     }
     case 'crescent': {
       const moon = M(new THREE.TorusGeometry(.1, .035, 8, 16, Math.PI * 1.3), 0xFFF6D8, { transparent:true, opacity:.95 });
       moon.position.set(0, .34, 0); moon.rotation.x = Math.PI / 2;
-      g.add(moon);
+      g.add(tagF(moon));
       break;
     }
     case 'ribbon': {
       for(let i = 0; i < 3; i++){ const rib = M(new THREE.SphereGeometry(.05, 8, 6),
         [0xF2A0B5, 0xB79BE8, 0x8FCBE6][i], { transparent:true, opacity:.75 });
-        rib.scale.set(.5, .3, 1.6); rib.position.set(0, .02, -.22 - i * .12); g.add(rib); }
+        rib.scale.set(.5, .3, 1.6); rib.position.set(0, .02, -.22 - i * .12); g.add(tagF(rib)); }
       break;
     }
   }
@@ -241,6 +287,121 @@ YY.buildSpiritMesh = function(speciesId){
   g.userData.speciesId = speciesId;
   g.traverse(o => { if(o.isMesh) o.castShadow = true; });
   return g;
+};
+
+/* ============================================================
+   #2 精靈的「專屬特色」:招牌特效 + 特徵造型動畫 + 圖鑑說明
+   ============================================================ */
+YY.SPIRIT_DESC = {
+  leaf:   '會不時抖落新鮮的小葉子',
+  dew:    '頭頂的水珠會滴滴答答落下',
+  pebble: '背上的小石粒會咕嚕咕嚕跳動',
+  sprout: '嫩芽一冒一冒地往上長',
+  bloom:  '裙擺的花瓣一片片飄散',
+  moth:   '拍著花紋翅膀,灑下紫色鱗粉',
+  ember:  '頭頂小火苗劈啪、噴出火星',
+  frost:  '身上冰刺閃著寒光,飄出霜花',
+  spark:  '會「滋滋——」地放電!',
+  moon:   '頭頂弦月發光,身體微微懸浮',
+  aurora: '拖著三色彩帶,灑出極光微光',
+};
+
+/* 招牌特效:每隔一段時間在精靈身上放一次 */
+YY.spiritSignatureFX = function(sp, x, y, z){
+  const S = YY.SPIRITS[sp]; if(!S) return;
+  switch(sp){
+    case 'spark':
+      YY.spawnZap(x, y + .1, z);
+      if(YY.sfx && YY.sfx.peep) YY.sfx.peep();
+      break;
+    case 'ember':
+      for(let i = 0; i < 4; i++)
+        YY.spawnMote(x + YY.rand(-.15, .15), y, z, [0xF2984A, 0xF2C14E, 0xE4573D][i % 3],
+          { vy: YY.rand(.5, .9), life:1.0, size:.05 });
+      break;
+    case 'frost':
+      for(let i = 0; i < 5; i++)
+        YY.spawnMote(x + YY.rand(-.25, .25), y + .3, z + YY.rand(-.2, .2), 0xCDEFF5,
+          { vy:-.35, life:1.6, size:.045 });
+      break;
+    case 'bloom':
+      for(let i = 0; i < 4; i++) YY.spawnPetal(x + YY.rand(-.2, .2), y + .2, z, 0xF7C7D6);
+      break;
+    case 'dew':
+      YY.spawnMote(x, y + .32, z, 0xCFE9F5, { vy:-.5, life:1.0, size:.06 });
+      break;
+    case 'leaf':
+      YY.spawnPetal(x + YY.rand(-.2, .2), y + .3, z, 0x8FCB6E);
+      break;
+    case 'sprout':
+      YY.spawnMote(x, y, z, 0xBEE39A, { vy:.6, life:.8, size:.05 });
+      break;
+    case 'moth':
+      for(let i = 0; i < 3; i++)
+        YY.spawnMote(x + YY.rand(-.2, .2), y, z, 0xC9B7EC, { vy:.3, life:1.2, size:.04 });
+      break;
+    case 'pebble':
+      YY.spawnMote(x + YY.rand(-.2, .2), y - .05, z, 0xC4A47A, { vy:.4, life:.7, size:.05 });
+      break;
+    case 'moon':
+      for(let i = 0; i < 3; i++)
+        YY.spawnMote(x + YY.rand(-.2, .2), y + .2, z, 0xFFF6D8, { vy:.25, life:1.6, size:.05 });
+      break;
+    case 'aurora':
+      [0xF2A0B5, 0xB79BE8, 0x8FCBE6].forEach((c, i) =>
+        YY.spawnMote(x + (i - 1) * .15, y + .2, z, c, { vy:.3, life:1.5, size:.05 }));
+      break;
+    default:
+      YY.spawnMote(x, y, z, S.c, { vy:.4, life:1.0, size:.05 });
+  }
+};
+
+/* 特徵造型的每幀小動畫(火苗晃、閃電抖、觸角擺…) */
+YY.animateSpiritFeature = function(mesh, sp, t, dt){
+  mesh.children.forEach(ch => {
+    const role = ch.userData.spiritFeature;
+    if(!role) return;
+    if(ch.userData._b0 === undefined){
+      ch.userData._b0 = ch.position.y; ch.userData._r0 = ch.rotation.z;
+      ch.userData._s0 = ch.scale.y; ch.userData._seed = Math.random() * 10;
+    }
+    const seed = ch.userData._seed, b0 = ch.userData._b0, r0 = ch.userData._r0, s0 = ch.userData._s0;
+    switch(role){
+      case 'flame':
+        ch.scale.y = s0 * (1 + Math.sin(t / 80 + seed) * .35);
+        if(ch.material) ch.material.opacity = .8 + Math.sin(t / 60 + seed) * .18;
+        break;
+      case 'bolt':
+        ch.rotation.z = r0 + Math.sin(t / 40 + seed) * .5;
+        break;
+      case 'antennae':
+        ch.rotation.z = r0 + Math.sin(t / 170 + seed + ch.position.x * 8) * .28;
+        break;
+      case 'crescent':
+        ch.position.y = b0 + Math.sin(t / 300 + seed) * .05;
+        ch.rotation.z += dt * .6;
+        break;
+      case 'ribbon':
+        ch.position.x = Math.sin(t / 150 + ch.position.z * 3 + seed) * .13;
+        break;
+      case 'petals':
+        ch.rotation.z = r0 + Math.sin(t / 210 + seed) * .18;
+        break;
+      case 'icespikes':
+        ch.scale.setScalar(1 + Math.sin(t / 150 + seed) * .12);
+        break;
+      case 'droplet':
+        ch.position.y = b0 + Math.sin(t / 220 + seed) * .05;
+        break;
+      case 'leafcap':
+      case 'twinsprout':
+        ch.rotation.z = r0 + Math.sin(t / 250 + seed) * .2;
+        break;
+      case 'rockbumps':
+        ch.position.y = b0 + Math.max(0, Math.sin(t / 280 + seed + ch.position.x * 6)) * .05;
+        break;
+    }
+  });
 };
 
 /* 依稀有度加權隨機挑一種精靈 / 寵物(給森林生怪 & 撿蛋用) */

@@ -74,6 +74,7 @@ YY.updateFocusStreak = function(t, dt){
     F.streakSec += dt; F.totalSec += dt;
     F.graceUntil = t + YY.FOCUS_GRACE_MS;
     if(YY.eggProgressFocus) YY.eggProgressFocus(dt);   // 給「專注時間」條件的蛋累積進度
+    if(YY.addEvoProgress) YY.addEvoProgress('focus', dt);   // #3 專注型寵物靠 Focus 進化
   } else if(t > F.graceUntil){
     if(F.streakSec > 0) F.nextRewardAt = YY.rand(70, 130);   // 重新開始一段專注,獎勵門檻也重置
     F.streakSec = 0;   // 移開太久了,重新計時
@@ -93,6 +94,7 @@ YY.save = function(){
       es: Math.round(YY.exploreSec || 0), cc: YY.catchCount || 0,
       bf: YY.berryFed || 0, gd: YY.gachaDraws || 0, pc: YY.patCount || 0,
       fs: Math.round((YY.focus && YY.focus.totalSec) || 0),
+      me: YY.medalsOwned || [], sc: YY.metSecrets || [],
     }));
   }catch(e){}
 };
@@ -104,6 +106,7 @@ YY.load = function(){
   YY.ownedPets = []; YY.activePet = null; YY.homeSpirits = [];
   YY.eggs = []; YY.metPets = [];
   YY.exploreSec = 0; YY.catchCount = 0; YY.berryFed = 0; YY.gachaDraws = 0; YY.patCount = 0;
+  YY.medalsOwned = []; YY.metSecrets = [];
   let fresh = true;
   try{
     const g = JSON.parse(localStorage.getItem('yy3d') || 'null');
@@ -123,6 +126,7 @@ YY.load = function(){
       YY.exploreSec = g.es || 0; YY.catchCount = g.cc || 0;
       YY.berryFed = g.bf || 0; YY.gachaDraws = g.gd || 0; YY.patCount = g.pc || 0;
       YY.focus.totalSec = g.fs || 0;
+      YY.medalsOwned = g.me || []; YY.metSecrets = g.sc || [];
     }
   }catch(e){}
   /* 第一次玩:送一隻起始寵物,讓牙寶一開始就有夥伴陪 */

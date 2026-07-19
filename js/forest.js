@@ -109,23 +109,30 @@ YY.showForest = function(on){
 /* ============================================================
    森林鏡頭:第三人稱(跟拍)/ 第一人稱(牙牙視角)
    ============================================================ */
-YY.forestCam = { fpv:false, yaw:0, tpTheta:.35, tpPhi:1.1, tpRadius:8 };
+YY.forestCam = { fpv:false, yaw:0, tpTheta:.35, tpPhi:1.1, tpRadius:8,
+  headYaw:0, headPitch:0, _tHeadYaw:0, _tHeadPitch:0, faceSync:false };
 
 YY.updateForestCam = function(t){
   const cre = YY.cre; if(!cre || !YY.camera) return;
   const F = YY.forestCam, cam = YY.camera;
   if(F.fpv){
-    /* 第一人稱:相機在牙牙頭部,朝牠面向的方向看,加一點走路晃動 */
+    /* 臉部同步:把偵測到的頭部角度平滑地帶進來 */
+    F.headYaw   += ((F._tHeadYaw   || 0) - F.headYaw)   * .15;
+    F.headPitch += ((F._tHeadPitch || 0) - F.headPitch) * .15;
+
+    /* 第一人稱:相機在牙牙頭部,朝(拖曳基準 + 你的頭轉向)看,加一點走路晃動 */
     const eyeY = 1.35 * cre.def.size;
     const bob = Math.sin(t / 140) * .04;
+    const lookYaw = F.yaw + F.headYaw * 1.15;          // 你轉頭 → 牙牙跟著轉頭看
+    const lookY = eyeY - .3 + F.headPitch * 2.4;        // 你抬頭/低頭 → 牙牙視線上下
     cam.position.set(cre.x, eyeY + bob, cre.z);
     const look = new THREE.Vector3(
-      cre.x + Math.sin(F.yaw) * 4,
-      eyeY - .3,
-      cre.z + Math.cos(F.yaw) * 4,
+      cre.x + Math.sin(lookYaw) * 4,
+      lookY,
+      cre.z + Math.cos(lookYaw) * 4,
     );
     cam.lookAt(look);
-    cre.root.rotation.y = F.yaw;   // 身體跟著視角轉
+    cre.root.rotation.y = lookYaw;   // 身體跟著視角轉
   } else {
     /* 第三人稱:繞著牙牙的跟拍鏡頭 */
     F.tpPhi = YY.clamp(F.tpPhi, .5, 1.4);
@@ -146,7 +153,7 @@ YY.toggleForestFPV = function(){
   F.fpv = !F.fpv;
   if(F.fpv){
     F.yaw = F.tpTheta;   // 從目前第三人稱角度接手
-    YY.flash('🐾 切到「牙牙視角」(第一人稱)!拖曳畫面可以左右張望,點地面往前走', 4200);
+    YY.flash('🐾 切到「牙牙視角」(第一人稱)!開了鏡頭後,轉動你的頭牙牙就會跟著看;也可拖曳張望、點地面前進', 5200);
     YY.tryForestCamPreview(true);
   } else {
     YY.flash('🌳 切回第三人稱視角', 2600);
@@ -155,10 +162,13 @@ YY.toggleForestFPV = function(){
   if(YY.renderForestHint) YY.renderForestHint();
 };
 
-/* 森林裡「開鏡頭」:純粹開一個小預覽當沉浸感,不進入 Focus Mode */
-let fStream = null;
+/* 森林裡「開鏡頭」:開一個小預覽,同時偵測你的頭部角度來同步牙牙視線 */
+let fStream = null, fDetTimer = 0;
 YY.tryForestCamPreview = async function(on){
+  const F = YY.forestCam;
   if(!on){
+    if(fDetTimer){ clearInterval(fDetTimer); fDetTimer = 0; }
+    F.faceSync = false; F._tHeadYaw = 0; F._tHeadPitch = 0;
     if(fStream){ fStream.getTracks().forEach(tr => tr.stop()); fStream = null; }
     const el = document.getElementById('camPreview'); if(el){ el.style.display = 'none'; el.srcObject = null; }
     return;
@@ -170,6 +180,24 @@ YY.tryForestCamPreview = async function(on){
     if(!el){ el = document.createElement('video'); el.id = 'camPreview';
       el.muted = true; el.playsInline = true; el.autoplay = true; document.body.appendChild(el); }
     el.srcObject = fStream; el.style.display = 'block';
-  }catch(e){ /* 拿不到鏡頭也沒關係,第一人稱照樣能玩 */ }
+    try{ await el.play(); }catch(e){}
+
+    /* 載入臉部模型 → 定時偵測頭部角度 → 同步到 forestCam(#1) */
+    if(YY.ensureFaceModels){
+      YY.ensureFaceModels().then(ok => {
+        if(!ok || !F.fpv){
+          if(F.fpv) YY.flash('臉部同步模型載入失敗,改用拖曳左右張望', 3200);
+          return;
+        }
+        F.faceSync = true;
+        YY.flash('🐾 臉部同步開啟!轉動你的頭,牙牙的視線就會跟著轉動', 4200);
+        fDetTimer = setInterval(async () => {
+          if(!F.fpv){ return; }
+          const a = await YY.detectHeadAngle(el);
+          if(a){ F._tHeadYaw = a.yaw; F._tHeadPitch = a.pitch; }
+        }, 180);
+      });
+    }
+  }catch(e){ /* 拿不到鏡頭也沒關係,第一人稱照樣能用拖曳張望 */ }
 };
 })();

@@ -30,20 +30,28 @@ YY.companionName = function(){
   return pet ? YY.petDisplayName(pet) : '小寵物';
 };
 
-/* 累積散步距離 → 進化(森林裡由 explore.js 呼叫) */
-YY.addWalkToActivePet = function(units){
+/* #3 通用:依「這隻寵物的進化方式」餵進度,只有方式吻合的當前寵物才會前進。
+   各種行為(散步 / 餵莓果 / 摸摸 / Focus / 陪伴)分別呼叫這個函式。 */
+YY.addEvoProgress = function(method, amount){
+  if(!amount) return;
   const pet = YY.getPet(YY.activePet);
   if(!pet) return;
+  if(YY.petEvoMethod(pet) !== method) return;   // 方式不對 → 這隻不吃這種進度
+
   const before = YY.petStage(pet);
-  pet.walks = (pet.walks || 0) + units;
+  pet.prog = YY.petProgVal(pet) + amount;
+  if(method === 'walk') pet.walks = pet.prog;    // 散步型同步舊欄位,存檔相容
   const after = YY.petStage(pet);
+
   if(after > before){
     YY.save();
     YY.refreshActivePet();
     YY.sfx.tada();
     if(YY.cre) YY.spawnConfetti(comp ? comp.x : YY.cre.x, 1.4, comp ? comp.z : YY.cre.z, 30);
     const petName = (YY.PETS[pet.sp] && YY.PETS[pet.sp].n) || '小寵物';
-    YY.flash(`✨ 進化!「${petName}」升級成【${YY.STAGE_TITLE[after]}】了!常帶牠散步果然有用~`, 4600);
+    const L = YY.PET_EVO_LABEL[method] || YY.PET_EVO_LABEL.walk;
+    YY.flash(`✨ 進化!「${petName}」升級成【${YY.STAGE_TITLE[after]}】了!(${L.name})`, 4600);
+    if(YY.tryRandomMedal) YY.tryRandomMedal(.5);
     if(document.getElementById('family') && document.getElementById('family').classList.contains('on') && YY.renderFamily)
       YY.renderFamily();
   } else {
@@ -51,10 +59,15 @@ YY.addWalkToActivePet = function(units){
   }
 };
 
+/* 相容舊呼叫:散步距離 → 只餵給「散步型」寵物 */
+YY.addWalkToActivePet = function(units){ YY.addEvoProgress('walk', units); };
+
 /* ---------- 每幀:跟在主人旁邊晃 ---------- */
 YY.updateCompanion = function(dt, t){
   if(!comp || !YY.cre) return;
   const cre = YY.cre;
+  /* #3 「陪伴進化」型寵物:只要當散步夥伴,靜靜陪你就會慢慢累積進度 */
+  if(YY.addEvoProgress) YY.addEvoProgress('time', dt);
   const tx = cre.x - .85 + Math.sin(t / 900) * .18;
   const tz = cre.z + .6 + Math.cos(t / 900) * .12;
   const dx = tx - comp.x, dz = tz - comp.z;

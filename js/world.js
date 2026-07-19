@@ -119,6 +119,12 @@ YY.initWorld = function(){
   /* ---------- 會被互動的小道具:積木塔 / 豆袋 / 紙箱 ---------- */
   buildProps(room);
 
+  /* ---------- 更多房間布景(#4):彩旗 / 時鐘 / 層板盆栽 / 相框 ---------- */
+  buildDecor(room);
+
+  /* ---------- 勳章牆(#4):隨機解鎖的勳章會掛在後牆上 ---------- */
+  if(YY.buildMedalWall) YY.buildMedalWall(room);
+
   /* ---------- 躲藏點(好感度低時會躲去這些地方偷看你) ---------- */
   YY.hideSpots = [
     { x:-3.7, z:-2.3 },   // 盆栽旁
@@ -247,6 +253,92 @@ function buildProps(scene){
   YY.box = { g: box, x:3.4, z:-3.4 };
 }
 
+/* ============================================================
+   更多房間布景(#4):讓房間更有生活感
+   彩旗 bunting / 牆上時鐘 / 左牆層板+盆栽+書 / 兩個相框
+   ============================================================ */
+function buildDecor(room){
+  const cols = [0xE4573D, 0xF2C14E, 0x6FA25E, 0x5A9BD8, 0x9B7FD4, 0xF2A0B5];
+
+  /* --- 彩旗:掛在後牆高處,微微下垂 --- */
+  const x0 = -9, x1 = 8, n = 14, yTop = 8.2;
+  for(let i = 0; i < n; i++){
+    const x = x0 + (x1 - x0) * i / (n - 1);
+    const dip = Math.sin(i / (n - 1) * Math.PI) * .5;
+    const flag = new THREE.Mesh(new THREE.ConeGeometry(.26, .48, 3), mat(cols[i % cols.length]));
+    flag.rotation.x = Math.PI;             // 尖端朝下
+    flag.position.set(x, yTop - dip - .3, -10.36);
+    room.add(flag);
+    // 連接的小繩結
+    const knot = new THREE.Mesh(new THREE.SphereGeometry(.05, 6, 6), mat(0x6B4A28));
+    knot.position.set(x, yTop - dip, -10.36);
+    room.add(knot);
+  }
+
+  /* --- 後牆時鐘(窗戶右邊) --- */
+  const clock = new THREE.Group();
+  const cface = new THREE.Mesh(new THREE.CylinderGeometry(.7, .7, .1, 26), mat(0xF7F1E2));
+  cface.rotation.x = Math.PI / 2;
+  const crim = new THREE.Mesh(new THREE.TorusGeometry(.72, .08, 10, 30), mat(0x3A342E));
+  const hour = new THREE.Mesh(new THREE.BoxGeometry(.07, .38, .03), mat(0x3A342E));
+  hour.position.set(0, .15, .07);
+  const minute = new THREE.Mesh(new THREE.BoxGeometry(.05, .3, .03), mat(0x8A6A44));
+  minute.position.set(.12, -.02, .07); minute.rotation.z = -.9;
+  for(let i = 0; i < 12; i++){
+    const a = i / 12 * Math.PI * 2;
+    const tick = new THREE.Mesh(new THREE.BoxGeometry(.05, .1, .03), mat(0x8A8478));
+    tick.position.set(Math.cos(a) * .58, Math.sin(a) * .58, .06);
+    clock.add(tick);
+  }
+  clock.add(cface, crim, hour, minute);
+  clock.position.set(7.4, 6.1, -10.36);
+  room.add(clock);
+
+  /* --- 左牆層板 + 兩盆小植物 + 一疊書 --- */
+  const shelf = new THREE.Group();
+  const plank = new THREE.Mesh(new THREE.BoxGeometry(.42, .12, 2.6), mat(0xC79A5E));
+  plank.castShadow = true; shelf.add(plank);
+  const bracket = (zz) => {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(.36, .3, .08), mat(0xA8763F));
+    b.position.set(-.02, -.2, zz); shelf.add(b);
+  };
+  bracket(-1); bracket(1);
+  [-0.75, 0.85].forEach(zz => {
+    const pot = new THREE.Mesh(new THREE.CylinderGeometry(.16, .13, .3, 12), mat(0xC4704F));
+    pot.position.set(.04, .22, zz); pot.castShadow = true;
+    const bush = new THREE.Mesh(new THREE.SphereGeometry(.22, 10, 8), mat(0x6FA25E));
+    bush.position.set(.04, .46, zz); bush.scale.set(.95, 1.15, .95); bush.castShadow = true;
+    shelf.add(pot, bush);
+  });
+  [0x5A9BD8, 0xF2C14E, 0xE4573D].forEach((c, i) => {
+    const bk = new THREE.Mesh(new THREE.BoxGeometry(.32, .1, .24), mat(c));
+    bk.position.set(.02, .11 + i * .11, .05 + i * .03);
+    bk.rotation.y = YY.rand(-.12, .12); bk.castShadow = true;
+    shelf.add(bk);
+  });
+  shelf.position.set(-10.32, 3.5, 2.2);
+  room.add(shelf);
+
+  /* --- 後牆兩個相框(門左邊、勳章板下方) --- */
+  const makeFrame = (x, y, sky, tilt) => {
+    const g = new THREE.Group();
+    const fr = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.2, .08), mat(0x9C5F30));
+    const pic = new THREE.Mesh(new THREE.BoxGeometry(.8, 1.0, .04), mat(sky));
+    pic.position.z = .04;
+    const sun = new THREE.Mesh(new THREE.SphereGeometry(.12, 10, 8), mat(0xF2C14E));
+    sun.position.set(.2, .28, .07);
+    const hill = new THREE.Mesh(new THREE.SphereGeometry(.36, 12, 8), mat(0x6FA25E));
+    hill.position.set(-.08, -.4, .07); hill.scale.set(1.5, .7, 1);
+    g.add(fr, pic, sun, hill);
+    g.position.set(x, y, -10.34);
+    g.rotation.z = tilt || 0;
+    g.traverse(o => { if(o.isMesh) o.castShadow = true; });
+    room.add(g);
+  };
+  makeFrame(-8.2, 2.8, 0xCFE6F0, .04);
+  makeFrame(-6.0, 2.4, 0xF3E2E6, -.05);
+}
+
 /* 撞倒積木!(自嗨 AI 會呼叫) */
 YY.knockBlocks = function(){
   const B = YY.blocks; if(!B) return;
@@ -338,6 +430,46 @@ YY.spawnSparkle = function(x, y, z){
   p.userData.p = { vy: YY.rand(.25, .45), life: 2.0, kind:'sparkle', vx: YY.rand(-.15, .15) };
   YY.scene.add(p); YY.particles.push(p);
 };
+
+/* ---------- #2 精靈招牌特效用的通用粒子 ---------- */
+/* 一顆會飄的小色點(vy 正=往上、負=往下) */
+YY.spawnMote = function(x, y, z, color, opt){
+  opt = opt || {};
+  const p = new THREE.Mesh(new THREE.SphereGeometry(opt.size || .05, 8, 8),
+    mat(color, { transparent:true, opacity:opt.opacity != null ? opt.opacity : .92 }));
+  p.position.set(x, y, z);
+  p.userData.p = { vy: opt.vy != null ? opt.vy : .4, vx: opt.vx != null ? opt.vx : YY.rand(-.15, .15),
+    vz: opt.vz || 0, life: opt.life || 1.0, kind:'mote' };
+  YY.scene.add(p); YY.particles.push(p);
+};
+/* 一片緩緩飄落、會左右搖的花瓣 / 葉片 */
+YY.spawnPetal = function(x, y, z, color){
+  const p = new THREE.Mesh(new THREE.PlaneGeometry(.14, .09),
+    mat(color, { transparent:true, opacity:.92, side:THREE.DoubleSide }));
+  p.position.set(x, y, z);
+  p.userData.p = { vy: YY.rand(-.5, -.3), life: YY.rand(1.4, 2.2), kind:'petal',
+    sway: YY.rand(1.2, 2.4), phase: Math.random() * 6, rz: YY.rand(-3, 3) };
+  YY.scene.add(p); YY.particles.push(p);
+};
+/* 電電精靈的「放電」:幾道亮黃閃電段 + 向外迸的火花 */
+YY.spawnZap = function(x, y, z){
+  for(let i = 0; i < 3; i++){
+    const seg = new THREE.Mesh(new THREE.BoxGeometry(.04, .24, .04),
+      mat(0xFFF27A, { transparent:true, opacity:.95 }));
+    seg.position.set(x + YY.rand(-.18, .18), y + .12 - i * .14, z + YY.rand(-.1, .1));
+    seg.rotation.z = YY.rand(-.9, .9);
+    seg.userData.p = { life:.3, kind:'zap' };
+    YY.scene.add(seg); YY.particles.push(seg);
+  }
+  for(let i = 0; i < 5; i++){
+    const a = Math.random() * Math.PI * 2, sp = YY.rand(1.2, 2.6);
+    const m = new THREE.Mesh(new THREE.SphereGeometry(.035, 6, 6),
+      mat(0xFFE24E, { transparent:true, opacity:.95 }));
+    m.position.set(x, y, z);
+    m.userData.p = { vx: Math.cos(a) * sp, vy: YY.rand(.5, 1.3), vz: Math.sin(a) * sp, life:.36, kind:'spark' };
+    YY.scene.add(m); YY.particles.push(m);
+  }
+};
 YY.updateParticles = function(dt){
   for(let i = YY.particles.length - 1; i >= 0; i--){
     const o = YY.particles[i], p = o.userData.p;
@@ -348,9 +480,25 @@ YY.updateParticles = function(dt){
       o.position.x += p.vx * dt; o.position.y += p.vy * dt; o.position.z += p.vz * dt;
       o.rotation.x += p.rx * dt; o.rotation.z += p.rz * dt;
       if(o.position.y < .05){ o.position.y = .05; p.vy = 0; p.vx *= .9; p.vz *= .9; }
+    } else if(p.kind === 'petal'){
+      /* 花瓣 / 葉片:緩緩飄落 + 左右搖 + 旋轉 */
+      o.position.y += p.vy * dt;
+      o.position.x += Math.sin(p.phase + o.position.y * p.sway) * dt * .5;
+      o.rotation.z += p.rz * dt; o.rotation.x += dt;
+      if(o.material) o.material.opacity = Math.max(0, Math.min(.92, p.life));
+      if(o.position.y < .05){ o.position.y = .05; }
+    } else if(p.kind === 'spark'){
+      /* 電火花:向外迸射 + 受重力 */
+      p.vy -= 5 * dt;
+      o.position.x += p.vx * dt; o.position.y += p.vy * dt; o.position.z += (p.vz || 0) * dt;
+      if(o.material) o.material.opacity = Math.max(0, p.life / .36);
+    } else if(p.kind === 'zap'){
+      /* 閃電段:原地快速閃爍後消失 */
+      if(o.material) o.material.opacity = (Math.sin(p.life * 80) > 0 ? .95 : .35) * Math.max(0, p.life / .3);
     } else {
       o.position.y += p.vy * dt;
       o.position.x += (p.vx || 0) * dt;
+      o.position.z += (p.vz || 0) * dt;
       const s = Math.max(.01, p.life / (p.kind === 'puff' ? .7 : 1.3));
       o.scale.setScalar(p.kind === 'puff' ? 2 - s : s);
       if(o.material && o.material.transparent) o.material.opacity = s;

@@ -23,10 +23,11 @@ YY.rebuildHomeSpirits = function(){
   (YY.homeSpirits || []).forEach((s, i) => {
     const mesh = YY.buildSpiritMesh(s.sp);
     const a = i / Math.max(1, YY.homeSpirits.length) * Math.PI * 2;
-    const x = Math.cos(a) * YY.rand(1.6, 3), z = -1 + Math.sin(a) * YY.rand(1.6, 3);
-    mesh.position.set(x, .3, z);
+    const x = Math.cos(a) * YY.rand(2.5, 6.5), z = -1 + Math.sin(a) * YY.rand(2.5, 6);
+    mesh.position.set(YY.clamp(x, -7, 7), .3, YY.clamp(z, -8, 6));
     YY.homeSpiritGroup.add(mesh);
-    homeMeshes.push({ uid:s.uid, sp:s.sp, mesh, x, z, tx:x, tz:z, wanderAt:0, bobT:Math.random() * 10 });
+    homeMeshes.push({ uid:s.uid, sp:s.sp, mesh, x, z, tx:x, tz:z, wanderAt:0, bobT:Math.random() * 10,
+      fxAt: YY.now() + YY.rand(2000, 7000) });
   });
 };
 
@@ -35,14 +36,15 @@ YY.updateHomeSpirits = function(t, dt){
   for(const h of homeMeshes){
     const dx = h.tx - h.x, dz = h.tz - h.z, dist = Math.hypot(dx, dz);
     if(dist > .06){
-      const sp = .7 * dt;
+      const sp = .9 * dt;   // 走快一點,活動範圍更大
       h.x += dx / dist * Math.min(sp, dist);
       h.z += dz / dist * Math.min(sp, dist);
       h.mesh.rotation.y += (Math.atan2(dx, dz) - h.mesh.rotation.y) * .08;
     } else if(t > h.wanderAt){
-      h.wanderAt = t + YY.rand(3000, 7000);
-      h.tx = YY.clamp(h.x + YY.rand(-1.6, 1.6), -3.4, 3.4);
-      h.tz = YY.clamp(h.z + YY.rand(-1.4, 1.4), -3, 2.6);
+      h.wanderAt = t + YY.rand(2600, 6500);
+      /* #3 活動範圍大幅擴大:整個房間地板都能逛(避開牆與家具邊緣) */
+      h.tx = YY.clamp(h.x + YY.rand(-4, 4), -7.5, 7.5);
+      h.tz = YY.clamp(h.z + YY.rand(-3.5, 3.5), -8, 6);
     }
     h.bobT += dt * 3;
     const hop = Math.abs(Math.sin(h.bobT)) * .12;
@@ -51,7 +53,20 @@ YY.updateHomeSpirits = function(t, dt){
       if(ch.userData.flap){ const f = Math.sin(t / 90) * .3; ch.rotation.z = ch.userData.flap.side * (.5 + f); }
       if(ch.userData.glow) ch.material.opacity = .14 + Math.sin(t / 500 + h.bobT) * .07;
     });
+
+    /* #2 每種精靈的專屬特色:動一動 feature 造型 + 定時放出招牌特效 */
+    if(YY.animateSpiritFeature) YY.animateSpiritFeature(h.mesh, h.sp, t, dt);
+    if(t > h.fxAt){
+      h.fxAt = t + YY.spiritFxInterval(h.sp);
+      if(YY.spiritSignatureFX) YY.spiritSignatureFX(h.sp, h.x, .55 + hop, h.z);
+    }
   }
+};
+
+/* 每種精靈放特效的間隔(電電精靈放電比較頻繁,有精神;其他慢一點) */
+YY.spiritFxInterval = function(sp){
+  const fast = { spark:1, ember:1, aurora:1, moon:1 };
+  return fast[sp] ? YY.rand(1800, 3600) : YY.rand(4000, 9000);
 };
 
 /* ---------- 蛋的孵化 ----------
@@ -106,6 +121,7 @@ function hatchEgg(egg){
   const firstTime = !YY.metSpirits.includes(egg.sp);
   YY.addHomeSpirit(egg.sp);
   YY.sfx.tada();
+  if(YY.tryRandomMedal) YY.tryRandomMedal(.45);
   if(YY.cre) YY.spawnConfetti(YY.cre.x, 1.6, YY.cre.z, 30);
   YY.flash(firstTime
     ? `🐣 蛋孵化了!首次發現「${S.n}」——牠住進你家了!`

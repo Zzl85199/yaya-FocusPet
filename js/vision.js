@@ -165,6 +165,48 @@ async function detect(){
   }catch(e){ /* 單次失敗不理它 */ }
 }
 
+/* ============================================================
+   #1 給「牙牙森林第一人稱」用:偵測玩家頭部角度 → 同步牙牙視線
+   確保模型載好 + 由一段影片估計頭部左右(yaw)/上下(pitch)角度
+   ============================================================ */
+let modelsLoading = null;
+YY.ensureFaceModels = function(){
+  if(!window.faceapi) return Promise.resolve(false);
+  if(faceapi.nets.tinyFaceDetector.isLoaded && YY.attention.landmarkReady) return Promise.resolve(true);
+  if(modelsLoading) return modelsLoading;
+  modelsLoading = (async () => {
+    try{
+      await loadTinyFaceDetectorOffline();
+      try{ await loadFaceLandmarkOffline(); YY.attention.landmarkReady = true; }
+      catch(e){ YY.attention.landmarkReady = false; }
+      return true;
+    }catch(e){ modelsLoading = null; return false; }
+  })();
+  return modelsLoading;
+};
+
+/* 回傳 { yaw, pitch }(各 -1~1)或 null。
+   yaw:頭往左右轉;pitch:抬頭 / 低頭。用 68 點特徵點的鼻尖 vs 兩眼中點估算。 */
+YY.detectHeadAngle = async function(videoEl){
+  if(!videoEl || videoEl.paused || !window.faceapi || !YY.attention.landmarkReady) return null;
+  try{
+    const r = await faceapi.detectSingleFace(videoEl, detOpts()).withFaceLandmarks(true);
+    if(!r) return null;
+    const le = r.landmarks.getLeftEye(), re = r.landmarks.getRightEye();
+    const nose = r.landmarks.getNose();
+    const noseTip = nose[nose.length - 1];
+    const eyeMidX = (le[0].x + re[3].x) / 2;
+    const eyeMidY = (le[0].y + re[3].y) / 2;
+    const eyeSpan = Math.abs(re[3].x - le[0].x) || 1;
+    /* 鼻尖相對兩眼中點的水平偏移 → 轉頭。原始鏡頭未鏡像,轉頭時鼻尖往反方向偏,
+       這裡取 (eyeMidX - noseTip.x) 讓「往右轉頭 → 往右看」符合直覺。 */
+    const yaw   = YY.clamp((eyeMidX - noseTip.x) / eyeSpan * 2.6, -1, 1);
+    /* 鼻尖相對眼睛線的高低 → 抬頭/低頭(扣掉臉正對時的基準比例) */
+    const pitch = YY.clamp(((noseTip.y - eyeMidY) / eyeSpan - 0.62) * 1.9, -1, 1);
+    return { yaw, pitch };
+  }catch(e){ return null; }
+};
+
 /* ---------- 每幀判斷:你在看嗎?(watching = 一般用途) / trueGaze(Focus Mode 專用,更嚴格) ---------- */
 YY.updateAttention = function(t){
   const A = YY.attention;

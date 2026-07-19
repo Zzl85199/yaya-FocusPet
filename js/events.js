@@ -46,34 +46,31 @@ function checkFamilyUnlocks(t){
 }
 
 function familyVisit(id, unlockMsg){
-  swapping = true;
   const F = YY.FAMILY[id];
-  YY.sfx.doorbell();
-  YY.flash(unlockMsg ? `叮咚!${unlockMsg}` : `叮咚!是${F.rel}——${F.n} 來玩了!`, 3400);
-
   const firstTime = !YY.metFamily.includes(id);
+  YY.sfx.doorbell();
+  swapping = true;   // 短暫佔用,避免同一時間又觸發另一個來訪
 
-  /* 現任角色跳出畫面右邊 */
-  const old = YY.cre;
-  old.tx = 9; old.tz = 2;
-  setTimeout(() => {
-    YY.spawnPuff(old.x, .6, old.z);
-    YY.switchCharacter(id, false, true);
-    const cre = YY.cre;
-    cre.x = -9; cre.z = 2; cre.tx = 0; cre.tz = 1.2;
-
-    if(firstTime){
-      YY.metFamily.push(id);
-      YY.addTickets(2, `第一次見到 ${F.n}!`);
-    }
+  if(firstTime){
+    /* #4 解鎖新家人:只把他們「加進名冊」,絕不自動換成他們出場。
+       想換誰陪你,請到「家族」面板手動點頭像切換。 */
+    YY.metFamily.push(id);
+    YY.spawnPuff(YY.cre ? YY.cre.x : 0, .8, YY.cre ? YY.cre.z : 0);
+    YY.flash(unlockMsg ? `叮咚!${unlockMsg}` : `叮咚!認識了新家人——${F.rel}${F.n}!`, 4200);
+    YY.addTickets(2, `第一次見到 ${F.n}!到「家族」面板可以手動換成 ${F.n} 陪你`);
+    if(YY.tryRandomMedal) YY.tryRandomMedal(.6);
     YY.save();
     setTimeout(() => {
-      YY.flash(`${F.n}:「${F.greet}」`, 3400);
+      YY.flash(`${F.n}:「${F.greet}」`, 3600);
       YY.sfx.chirp();
-      swapping = false;
       if($('#family').classList.contains('on')) YY.renderFamily();
-    }, 1400);
-  }, 1600);
+    }, 1600);
+  } else {
+    /* 已認識的家人:只是探頭打個招呼,同樣不換角色 */
+    YY.flash(`叮咚!${F.n} 探頭來跟你打了聲招呼~`, 3000);
+    setTimeout(() => { YY.flash(`${F.n}:「${F.greet}」`, 3000); YY.sfx.chirp(); }, 1400);
+  }
+  setTimeout(() => { swapping = false; }, 2200);
 }
 YY.familyVisit = familyVisit; // 除錯用:YY.familyVisit('meimei')
 
@@ -173,6 +170,8 @@ YY.eatBerry = function(cre){
   YY.bumpTrust(4);                          // 餵食很加分,好感度 +4
   YY.berryFed = (YY.berryFed || 0) + 1;     // 給芽媽解鎖條件、也順便餵「餵莓果」條件的蛋
   if(YY.eggProgressBerry) YY.eggProgressBerry();
+  if(YY.addEvoProgress) YY.addEvoProgress('berry', 1);   // #3 貪吃型寵物靠餵莓果進化
+  if(YY.tryRandomMedal) YY.tryRandomMedal(.05);
   YY.save();
   /* 扭蛋券改成隨機掉落(約一半機率) */
   if(Math.random() < .55){
