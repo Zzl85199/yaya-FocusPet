@@ -173,6 +173,8 @@ yaya3d/
 │   ├── home.js         家中精靈遊蕩 + 孵蛋器
 │   ├── medals.js       勳章:隨機解鎖 + 掛在後牆的勳章板
 │   ├── secrets.js      牙牙小祕密:散步/專注隨機解鎖 + 記錄面板
+│   ├── medals.js       勳章:隨機解鎖 + 掛在後牆的勳章板
+│   ├── secrets.js      牙牙小祕密:散步/專注隨機解鎖 + 記錄面板
 │   └── main.js         輸入與主迴圈
 ├── tools/build.js      打包腳本
 └── dist/yaya3d-bundle.html  單檔版(打包產物)

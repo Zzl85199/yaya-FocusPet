@@ -172,6 +172,8 @@ YY.eatBerry = function(cre){
   if(YY.eggProgressBerry) YY.eggProgressBerry();
   if(YY.addEvoProgress) YY.addEvoProgress('berry', 1);   // #3 貪吃型寵物靠餵莓果進化
   if(YY.tryRandomMedal) YY.tryRandomMedal(.05);
+  if(YY.addEvoProgress) YY.addEvoProgress('berry', 1);   // #3 貪吃型寵物靠餵莓果進化
+  if(YY.tryRandomMedal) YY.tryRandomMedal(.05);
   YY.save();
   /* 扭蛋券改成隨機掉落(約一半機率) */
   if(Math.random() < .55){

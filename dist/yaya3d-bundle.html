@@ -230,6 +230,19 @@ header p{margin-top:8px; font-size:13px; color:var(--ink-soft); font-weight:700;
   border:2px solid currentColor; border-radius:999px; padding:1px 9px; margin-bottom:7px;}
 .secrow .sectext{font-size:14px; font-weight:700; line-height:1.75; color:var(--ink);}
 
+/* ---------- 勳章卡片(家族面板內) ---------- */
+.fcard.medal{border-color:#E0A93A; box-shadow:0 3px 0 rgba(224,169,58,.35); cursor:default;}
+.fcard.medal.lock{border-color:var(--ink);}
+.fcard.medal:active{transform:none;}
+
+/* ---------- 牙牙的小祕密 記錄 ---------- */
+.seclist{display:flex; flex-direction:column; gap:10px; margin-top:4px;}
+.secrow{border:3px solid var(--ink); border-radius:16px; padding:11px 13px;
+  background:#FBFAF3; box-shadow:0 3px 0 rgba(44,64,52,.12);}
+.secrow .sectag{display:inline-block; font-size:11.5px; font-weight:800;
+  border:2px solid currentColor; border-radius:999px; padding:1px 9px; margin-bottom:7px;}
+.secrow .sectext{font-size:14px; font-weight:700; line-height:1.75; color:var(--ink);}
+
 </style>
 </head>
 <body>
@@ -259,6 +272,7 @@ header p{margin-top:8px; font-size:13px; color:var(--ink-soft); font-weight:700;
   <button id="btnWardrobe">👒 衣櫃</button>
   <button id="btnFamily">🏠 家族</button>
   <button id="btnSecrets">📖 祕密</button>
+  <button id="btnSecrets">📖 祕密</button>
   <button id="btnBerry">🫐 餵莓果</button>
   <button id="btnEye">🎯 Focus Mode</button>
 </nav>
@@ -271,6 +285,11 @@ header p{margin-top:8px; font-size:13px; color:var(--ink-soft); font-weight:700;
 <aside id="family" class="panel">
   <div class="ph"><b>芽芽的家族</b><span id="famCount"></span><button class="x" data-close="family">✕</button></div>
   <div class="pb" id="familyBody"></div>
+</aside>
+
+<aside id="secrets" class="panel">
+  <div class="ph"><b>📖 牙牙的小祕密</b><span id="secretCount"></span><button class="x" data-close="secrets">✕</button></div>
+  <div class="pb" id="secretsBody"></div>
 </aside>
 
 <aside id="secrets" class="panel">
@@ -387,6 +406,7 @@ YY.updateFocusStreak = function(t, dt){
     F.graceUntil = t + YY.FOCUS_GRACE_MS;
     if(YY.eggProgressFocus) YY.eggProgressFocus(dt);   // 給「專注時間」條件的蛋累積進度
     if(YY.addEvoProgress) YY.addEvoProgress('focus', dt);   // #3 專注型寵物靠 Focus 進化
+    if(YY.addEvoProgress) YY.addEvoProgress('focus', dt);   // #3 專注型寵物靠 Focus 進化
   } else if(t > F.graceUntil){
     if(F.streakSec > 0) F.nextRewardAt = YY.rand(70, 130);   // 重新開始一段專注,獎勵門檻也重置
     F.streakSec = 0;   // 移開太久了,重新計時
@@ -407,6 +427,7 @@ YY.save = function(){
       bf: YY.berryFed || 0, gd: YY.gachaDraws || 0, pc: YY.patCount || 0,
       fs: Math.round((YY.focus && YY.focus.totalSec) || 0),
       me: YY.medalsOwned || [], sc: YY.metSecrets || [],
+      me: YY.medalsOwned || [], sc: YY.metSecrets || [],
     }));
   }catch(e){}
 };
@@ -418,6 +439,7 @@ YY.load = function(){
   YY.ownedPets = []; YY.activePet = null; YY.homeSpirits = [];
   YY.eggs = []; YY.metPets = [];
   YY.exploreSec = 0; YY.catchCount = 0; YY.berryFed = 0; YY.gachaDraws = 0; YY.patCount = 0;
+  YY.medalsOwned = []; YY.metSecrets = [];
   YY.medalsOwned = []; YY.metSecrets = [];
   let fresh = true;
   try{
@@ -438,6 +460,7 @@ YY.load = function(){
       YY.exploreSec = g.es || 0; YY.catchCount = g.cc || 0;
       YY.berryFed = g.bf || 0; YY.gachaDraws = g.gd || 0; YY.patCount = g.pc || 0;
       YY.focus.totalSec = g.fs || 0;
+      YY.medalsOwned = g.me || []; YY.metSecrets = g.sc || [];
       YY.medalsOwned = g.me || []; YY.metSecrets = g.sc || [];
     }
   }catch(e){}
@@ -1061,7 +1084,54 @@ YY.petProgVal = function(pet){
   if(pet.prog != null) return pet.prog;
   return YY.petEvoMethod(pet) === 'walk' ? (pet.walks || 0) : 0;
 };
+
+/* ============================================================
+   #3 進化系統:每種寵物有「不同的進化方式」,而且整體變慢
+   -----------------------------------------------------------
+   evo 方式(每種寵物專屬一種):
+     walk  🚶 帶去牙牙森林散步(累積距離)
+     berry 🫐 在家餵莓果(次數)
+     pat   ✋ 常常摸摸牠(次數)
+     focus 🎯 開眼神感應一起 Focus Mode(秒數)
+     time  🕰️ 讓牠當散步夥伴,靜靜陪你(秒數)
+   舊版只能靠散步、而且門檻只有 24/64 太快;現在門檻大幅提高。
+   ============================================================ */
+YY.PET_EVO = {
+  cottonbun:'walk',  pip:'walk',    hoppy:'walk',
+  fluff:'berry',     paddle:'berry',
+  mochi:'pat',       crystalfox:'pat',
+  spike:'focus',     ember:'focus',  starcat:'focus',
+  bubble:'time',     slowpoke:'time',
+  toffee:'walk',
+};
+YY.petEvoMethod = pet => YY.PET_EVO[pet.sp] || 'walk';
+
+/* 每種方式的兩段門檻(0→1、0→2);比舊版慢很多,單位各自不同 */
+YY.PET_EVO_NEED = {
+  walk:  [90, 240],    // 散步距離(世界單位)
+  berry: [6, 16],      // 餵莓果次數
+  pat:   [30, 80],     // 摸摸次數
+  focus: [180, 480],   // Focus 專注秒數
+  time:  [420, 1080],  // 當散步夥伴的陪伴秒數
+};
+YY.PET_EVO_LABEL = {
+  walk:  { icon:'🚶', name:'散步進化', unit:'步', verb:'散步' },
+  berry: { icon:'🫐', name:'美食進化', unit:'次', verb:'餵莓果' },
+  pat:   { icon:'✋', name:'親密進化', unit:'次', verb:'摸摸牠' },
+  focus: { icon:'🎯', name:'專注進化', unit:'秒', verb:'一起 Focus' },
+  time:  { icon:'🕰️', name:'陪伴進化', unit:'秒', verb:'讓牠陪著你' },
+};
+
+/* 取得某隻寵物目前累積的進度值(相容舊存檔:只有散步型才沿用舊 walks) */
+YY.petProgVal = function(pet){
+  if(pet.prog != null) return pet.prog;
+  return YY.petEvoMethod(pet) === 'walk' ? (pet.walks || 0) : 0;
+};
 YY.petStage = function(pet){
+  const p = YY.petProgVal(pet);
+  const need = YY.PET_EVO_NEED[YY.petEvoMethod(pet)] || YY.PET_EVO_NEED.walk;
+  if(p >= need[1]) return 2;
+  if(p >= need[0]) return 1;
   const p = YY.petProgVal(pet);
   const need = YY.PET_EVO_NEED[YY.petEvoMethod(pet)] || YY.PET_EVO_NEED.walk;
   if(p >= need[1]) return 2;
@@ -1069,6 +1139,14 @@ YY.petStage = function(pet){
   return 0;
 };
 YY.petStageProgress = function(pet){
+  const st = YY.petStage(pet), p = YY.petProgVal(pet);
+  const need = YY.PET_EVO_NEED[YY.petEvoMethod(pet)] || YY.PET_EVO_NEED.walk;
+  const L = YY.PET_EVO_LABEL[YY.petEvoMethod(pet)] || YY.PET_EVO_LABEL.walk;
+  if(st >= 2) return { st, pct:100, need:0, max:1, method:YY.petEvoMethod(pet), L };
+  const lo = st === 0 ? 0 : need[0];
+  const hi = need[st];
+  return { st, pct: Math.round((p - lo) / (hi - lo) * 100), need: Math.ceil(hi - p), max: hi - lo,
+    method:YY.petEvoMethod(pet), L };
   const st = YY.petStage(pet), p = YY.petProgVal(pet);
   const need = YY.PET_EVO_NEED[YY.petEvoMethod(pet)] || YY.PET_EVO_NEED.walk;
   const L = YY.PET_EVO_LABEL[YY.petEvoMethod(pet)] || YY.PET_EVO_LABEL.walk;
@@ -1445,35 +1523,42 @@ YY.FAMILY = {
     n:'芽芽', rel:'本體', body:0xFFDF8E, blush:0xFFA8B4,
     size:1.0, sprout:'twin', greet:'……你、你好。(小小聲)',
     trait:'怕生的小主角', props:[],
+    trait:'怕生的小主角', props:[],
   },
   doudou: {
     n:'芽豆', rel:'調皮的弟弟', body:0xBBDD8E, blush:0xFFB08A,
     size:0.82, sprout:'single', greet:'嘿嘿!換我玩換我玩!',
+    trait:'頭戴竹蜻蜓帽,身邊總有顆玩具球', props:['beanie','toyball'],
     trait:'頭戴竹蜻蜓帽,身邊總有顆玩具球', props:['beanie','toyball'],
   },
   meimei: {
     n:'芽莓', rel:'愛撒嬌的妹妹', body:0xFFC7D1, blush:0xFF8FA5,
     size:0.88, sprout:'berry', greet:'姊姊來看你了~抱抱!',
     trait:'綁著蝴蝶結,抱著愛心抱枕', props:['bow','heartplush'],
+    trait:'綁著蝴蝶結,抱著愛心抱枕', props:['bow','heartplush'],
   },
   zhuang: {
     n:'芽壯', rel:'可靠的哥哥', body:0xFFC97A, blush:0xE89A6B,
     size:1.18, sprout:'triple', greet:'弟弟妹妹有沒有乖乖的啊。',
+    trait:'披著英雄小披風、綁著頭帶', props:['cape','headband'],
     trait:'披著英雄小披風、綁著頭帶', props:['cape','headband'],
   },
   mama: {
     n:'芽媽', rel:'溫柔的媽媽', body:0xF5B39A, blush:0xE88A7A,
     size:1.12, sprout:'flower', greet:'哎呀,家裡好熱鬧呀。',
     trait:'圍著圍裙、拿著木勺', props:['apron','spoon'],
+    trait:'圍著圍裙、拿著木勺', props:['apron','spoon'],
   },
   baba: {
     n:'芽爸', rel:'憨憨的爸爸', body:0xE0B072, blush:0xC98A5A,
     size:1.28, sprout:'stache', greet:'嗯哼。(點頭致意)',
     trait:'留著鬍子、戴著老花眼鏡看報紙', props:['glasses','newspaper'],
+    trait:'留著鬍子、戴著老花眼鏡看報紙', props:['glasses','newspaper'],
   },
   nana: {
     n:'芽奶奶', rel:'見多識廣的奶奶', body:0xCFD8C0, blush:0xB8A8C8,
     size:0.95, sprout:'bun', greet:'小時候的芽芽呀,更怕生呢。',
+    trait:'拄著拐杖、戴圓眼鏡、披著披肩', props:['cane','glasses','shawl'],
     trait:'拄著拐杖、戴圓眼鏡、披著披肩', props:['cane','glasses','shawl'],
   },
 };
@@ -1637,6 +1722,7 @@ function tryUnlockVariant(guaranteed){
   YY.sfx.tada();
   YY.spawnConfetti(YY.cre.x, 2.4 * YY.cre.def.size, YY.cre.z, 40);
   if(YY.tryRandomMedal) YY.tryRandomMedal(.4);
+  if(YY.tryRandomMedal) YY.tryRandomMedal(.4);
   YY.flash(`🌟 異種解鎖!你的專注引來了「${V.n}」——去家族面板看看牠吧!`, 4600);
   if(document.getElementById('family').classList.contains('on') && YY.renderFamily) YY.renderFamily();
   return true;
@@ -1646,6 +1732,7 @@ YY.debugUnlockVariant = () => tryUnlockVariant(true);   // 除錯用
 /* ---------- #3 專注獎勵機制 ---------- */
 function rollReward(){
   const cre = YY.cre;
+  if(YY.tryRandomMedal) YY.tryRandomMedal(.15);
   if(YY.tryRandomMedal) YY.tryRandomMedal(.15);
   const roll = Math.random();
   if(roll < .12 && lockedVariants().length){
@@ -1709,6 +1796,10 @@ YY.updateFocusExtras = function(t, dt){
   }
   if(!YY.attention.trueGaze) return;   // 小功能只在你眼睛真的看著螢幕時才出現
   if(t / 1000 > nextFlavorAt){
+    /* #5 Focus Mode 中,有機率隨機解鎖一則「牙牙小祕密」,否則播一般小動作 */
+    let gotSecret = false;
+    if(YY.tryUnlockSecret && Math.random() < .45) gotSecret = YY.tryUnlockSecret(1, 'focus');
+    if(!gotSecret) playFlavor();
     /* #5 Focus Mode 中,有機率隨機解鎖一則「牙牙小祕密」,否則播一般小動作 */
     let gotSecret = false;
     if(YY.tryUnlockSecret && Math.random() < .45) gotSecret = YY.tryUnlockSecret(1, 'focus');
@@ -2040,6 +2131,9 @@ YY.buildCharacter = function(charId){
   /* ---------- 家族專屬道具(拐杖 / 圍裙 / 披風 / 眼鏡…)每位家人不同特色 ---------- */
   buildFamilyProps(squash, body, face, F.props);
 
+  /* ---------- 家族專屬道具(拐杖 / 圍裙 / 披風 / 眼鏡…)每位家人不同特色 ---------- */
+  buildFamilyProps(squash, body, face, F.props);
+
   /* ---------- 異種特徵(Focus Mode 解鎖的飛行 / 閃亮異種) ---------- */
   let variantFX = null;
   if(F.variant === 'flying'){
@@ -2155,6 +2249,172 @@ function buildSprout(g, kind, face){
       b.position.y = .16; g.add(b);
       const pin = M(new THREE.CylinderGeometry(.02, .02, .4, 6), 0xC4704F);
       pin.rotation.z = 1.2; pin.position.y = .2; g.add(pin);
+      break;
+    }
+  }
+}
+
+/* ---------- 家族成員各自的專屬道具 ----------
+   每個道具都用基本幾何體手工搭出來,掛在 squash / body / face 上,
+   會跟著角色一起縮放、轉身,讓每位家人一眼就能認出來。 */
+function buildFamilyProps(squash, body, face, props){
+  if(!props || !props.length) return;
+  props.forEach(p => buildOneProp(squash, body, face, p));
+}
+function buildOneProp(squash, body, face, kind){
+  switch(kind){
+    /* 奶奶:拐杖(站在身體右側) */
+    case 'cane': {
+      const cane = new THREE.Group();
+      const shaft = M(new THREE.CylinderGeometry(.05, .06, 1.55, 8), 0xB5793E);
+      shaft.position.y = .78;
+      const handle = M(new THREE.TorusGeometry(.16, .05, 8, 14, Math.PI), 0x9C5F30);
+      handle.position.set(-.14, 1.5, 0); handle.rotation.z = -.2;
+      const tip = M(new THREE.SphereGeometry(.07, 8, 6), 0x6B4A28);
+      tip.position.y = 0;
+      cane.add(shaft, handle, tip);
+      cane.position.set(1.18, 0, .4);
+      cane.rotation.z = .12;
+      squash.add(cane);
+      break;
+    }
+    /* 奶奶 & 爸爸:圓框眼鏡(掛在臉上) */
+    case 'glasses': {
+      [-1, 1].forEach(s => {
+        const rim = M(new THREE.TorusGeometry(.17, .028, 8, 18), 0x3A342E);
+        rim.position.set(s * .34, .1, .3);
+        face.add(rim);
+        const lens = M(new THREE.CircleGeometry(.16, 18), 0xCFE6F0, { transparent:true, opacity:.32 });
+        lens.position.set(s * .34, .1, .29);
+        face.add(lens);
+      });
+      const bridge = M(new THREE.BoxGeometry(.2, .03, .03), 0x3A342E);
+      bridge.position.set(0, .12, .3); face.add(bridge);
+      break;
+    }
+    /* 奶奶:披肩(蓋在肩膀上) */
+    case 'shawl': {
+      const shawl = M(new THREE.SphereGeometry(1.06, 22, 14, 0, Math.PI * 2, Math.PI * .30, Math.PI * .42),
+        0xA893BE, { transparent:true, opacity:.96 });
+      shawl.scale.set(1.02, .95, 1.02);
+      shawl.position.y = .96;
+      squash.add(shawl);
+      const trim = M(new THREE.TorusGeometry(.86, .05, 8, 28), 0x8C77A6);
+      trim.rotation.x = Math.PI / 2; trim.position.y = 1.02;
+      squash.add(trim);
+      break;
+    }
+    /* 媽媽:圍裙(貼在身體正面) */
+    case 'apron': {
+      const apron = M(new THREE.CylinderGeometry(.52, .66, .95, 18, 1, true, -.6, 1.2),
+        0xF3E2E6);
+      apron.position.set(0, .62, .62);
+      apron.scale.z = .35;
+      squash.add(apron);
+      const pocket = M(new THREE.BoxGeometry(.32, .18, .04), 0xE7C9CF);
+      pocket.position.set(0, .5, .92); squash.add(pocket);
+      const strap = M(new THREE.TorusGeometry(.5, .04, 6, 20, Math.PI), 0xE7C9CF);
+      strap.position.set(0, 1.28, .3); strap.rotation.x = -.4;
+      squash.add(strap);
+      break;
+    }
+    /* 媽媽:木勺(拿在身體左側) */
+    case 'spoon': {
+      const spoon = new THREE.Group();
+      const stick = M(new THREE.CylinderGeometry(.035, .04, .7, 7), 0xC79A5E);
+      stick.position.y = .35;
+      const scoop = M(new THREE.SphereGeometry(.14, 12, 10), 0xD9AE72);
+      scoop.scale.set(1, .45, .8); scoop.position.y = .74;
+      spoon.add(stick, scoop);
+      spoon.position.set(-1.12, .35, .45);
+      spoon.rotation.z = -.35;
+      squash.add(spoon);
+      break;
+    }
+    /* 哥哥:英雄小披風(背後飄) */
+    case 'cape': {
+      const cape = M(new THREE.SphereGeometry(1.02, 22, 14, 0, Math.PI * 2, Math.PI * .22, Math.PI * .6),
+        0xE05A4A, { transparent:true, opacity:.95, side:THREE.DoubleSide });
+      cape.scale.set(1.04, 1.25, .55);
+      cape.position.set(0, .9, -.5);
+      squash.add(cape);
+      const collar = M(new THREE.TorusGeometry(.5, .07, 8, 20, Math.PI), 0xC7463A);
+      collar.position.set(0, 1.5, -.1); collar.rotation.x = .5;
+      squash.add(collar);
+      break;
+    }
+    /* 哥哥:頭帶(綁在額頭) */
+    case 'headband': {
+      const band = M(new THREE.TorusGeometry(.82, .07, 8, 24), 0x4C7CC4);
+      band.rotation.x = Math.PI / 2 - .18;
+      band.position.y = 1.62;
+      squash.add(band);
+      [-1, 1].forEach(s => {
+        const tail = M(new THREE.BoxGeometry(.08, .34, .04), 0x4C7CC4);
+        tail.position.set(s * .55, 1.5, -.55); tail.rotation.z = s * .3;
+        squash.add(tail);
+      });
+      break;
+    }
+    /* 妹妹:蝴蝶結(綁在頭側) */
+    case 'bow': {
+      const bow = new THREE.Group();
+      [-1, 1].forEach(s => {
+        const loop = M(new THREE.SphereGeometry(.16, 10, 8), 0xF25F86);
+        loop.scale.set(.9, 1.2, .4); loop.position.x = s * .16;
+        bow.add(loop);
+      });
+      const knot = M(new THREE.SphereGeometry(.08, 8, 8), 0xD94874);
+      bow.add(knot);
+      bow.position.set(.72, 1.5, .1);
+      squash.add(bow);
+      break;
+    }
+    /* 妹妹:愛心抱枕(抱在身體正前方) */
+    case 'heartplush': {
+      const heart = YY.heartGroup(0xFF8FA5, .26);
+      heart.position.set(0, .62, .74);
+      heart.scale.setScalar(1.1);
+      squash.add(heart);
+      break;
+    }
+    /* 爸爸:報紙(拿在身體前面) */
+    case 'newspaper': {
+      const paper = new THREE.Group();
+      const sheet = M(new THREE.BoxGeometry(.9, .66, .04), 0xF3EFE4);
+      const fold = M(new THREE.BoxGeometry(.03, .66, .05), 0xC9C2B0);
+      const l1 = M(new THREE.BoxGeometry(.7, .05, .06), 0x8A8478);
+      l1.position.set(0, .16, .03);
+      const l2 = l1.clone(); l2.position.y = .02;
+      const l3 = l1.clone(); l3.position.y = -.12;
+      paper.add(sheet, fold, l1, l2, l3);
+      paper.position.set(0, .74, .78);
+      paper.rotation.x = -.25;
+      squash.add(paper);
+      break;
+    }
+    /* 弟弟:竹蜻蜓帽(頭頂旋轉小螺旋槳) */
+    case 'beanie': {
+      const cap = M(new THREE.SphereGeometry(.6, 16, 10, 0, Math.PI * 2, 0, Math.PI * .5), 0x5AB0E0);
+      cap.position.y = 1.66; squash.add(cap);
+      const prop = new THREE.Group();
+      [-1, 1].forEach(s => {
+        const blade = M(new THREE.BoxGeometry(.5, .04, .12), 0xF2C14E);
+        blade.position.x = s * .28; prop.add(blade);
+      });
+      prop.position.y = 2.02;
+      prop.userData.spin = 6;   // creature.js 的動畫迴圈會轉它
+      squash.add(prop);
+      squash.userData.propeller = prop;
+      break;
+    }
+    /* 弟弟:玩具球(滾在腳邊) */
+    case 'toyball': {
+      const ball = M(new THREE.SphereGeometry(.3, 16, 12), 0xF25F5C);
+      ball.position.set(1.1, .3, .7);
+      const stripe = M(new THREE.TorusGeometry(.3, .05, 8, 20), 0xFFF1D6);
+      stripe.position.copy(ball.position); stripe.rotation.y = .5;
+      squash.add(ball, stripe);
       break;
     }
   }
@@ -2456,6 +2716,9 @@ YY.updateCreature = function(cre, dt, t){
   /* 弟弟的竹蜻蜓帽:螺旋槳一直轉 */
   if(cre.squash.userData.propeller) cre.squash.userData.propeller.rotation.y += dt * 6;
 
+  /* 弟弟的竹蜻蜓帽:螺旋槳一直轉 */
+  if(cre.squash.userData.propeller) cre.squash.userData.propeller.rotation.y += dt * 6;
+
   /* 異種特徵動畫:翅膀拍動 / 星星繞圈 / 光暈脈動 */
   if(cre.variantFX){
     cre.variantFX.children.forEach(ch => {
@@ -2628,6 +2891,12 @@ YY.initWorld = function(){
   /* ---------- 勳章牆(#4):隨機解鎖的勳章會掛在後牆上 ---------- */
   if(YY.buildMedalWall) YY.buildMedalWall(room);
 
+  /* ---------- 更多房間布景(#4):彩旗 / 時鐘 / 層板盆栽 / 相框 ---------- */
+  buildDecor(room);
+
+  /* ---------- 勳章牆(#4):隨機解鎖的勳章會掛在後牆上 ---------- */
+  if(YY.buildMedalWall) YY.buildMedalWall(room);
+
   /* ---------- 躲藏點(好感度低時會躲去這些地方偷看你) ---------- */
   YY.hideSpots = [
     { x:-3.7, z:-2.3 },   // 盆栽旁
@@ -2754,6 +3023,92 @@ function buildProps(scene){
   box.position.set(3.4, 0, -3.4);
   scene.add(box);
   YY.box = { g: box, x:3.4, z:-3.4 };
+}
+
+/* ============================================================
+   更多房間布景(#4):讓房間更有生活感
+   彩旗 bunting / 牆上時鐘 / 左牆層板+盆栽+書 / 兩個相框
+   ============================================================ */
+function buildDecor(room){
+  const cols = [0xE4573D, 0xF2C14E, 0x6FA25E, 0x5A9BD8, 0x9B7FD4, 0xF2A0B5];
+
+  /* --- 彩旗:掛在後牆高處,微微下垂 --- */
+  const x0 = -9, x1 = 8, n = 14, yTop = 8.2;
+  for(let i = 0; i < n; i++){
+    const x = x0 + (x1 - x0) * i / (n - 1);
+    const dip = Math.sin(i / (n - 1) * Math.PI) * .5;
+    const flag = new THREE.Mesh(new THREE.ConeGeometry(.26, .48, 3), mat(cols[i % cols.length]));
+    flag.rotation.x = Math.PI;             // 尖端朝下
+    flag.position.set(x, yTop - dip - .3, -10.36);
+    room.add(flag);
+    // 連接的小繩結
+    const knot = new THREE.Mesh(new THREE.SphereGeometry(.05, 6, 6), mat(0x6B4A28));
+    knot.position.set(x, yTop - dip, -10.36);
+    room.add(knot);
+  }
+
+  /* --- 後牆時鐘(窗戶右邊) --- */
+  const clock = new THREE.Group();
+  const cface = new THREE.Mesh(new THREE.CylinderGeometry(.7, .7, .1, 26), mat(0xF7F1E2));
+  cface.rotation.x = Math.PI / 2;
+  const crim = new THREE.Mesh(new THREE.TorusGeometry(.72, .08, 10, 30), mat(0x3A342E));
+  const hour = new THREE.Mesh(new THREE.BoxGeometry(.07, .38, .03), mat(0x3A342E));
+  hour.position.set(0, .15, .07);
+  const minute = new THREE.Mesh(new THREE.BoxGeometry(.05, .3, .03), mat(0x8A6A44));
+  minute.position.set(.12, -.02, .07); minute.rotation.z = -.9;
+  for(let i = 0; i < 12; i++){
+    const a = i / 12 * Math.PI * 2;
+    const tick = new THREE.Mesh(new THREE.BoxGeometry(.05, .1, .03), mat(0x8A8478));
+    tick.position.set(Math.cos(a) * .58, Math.sin(a) * .58, .06);
+    clock.add(tick);
+  }
+  clock.add(cface, crim, hour, minute);
+  clock.position.set(7.4, 6.1, -10.36);
+  room.add(clock);
+
+  /* --- 左牆層板 + 兩盆小植物 + 一疊書 --- */
+  const shelf = new THREE.Group();
+  const plank = new THREE.Mesh(new THREE.BoxGeometry(.42, .12, 2.6), mat(0xC79A5E));
+  plank.castShadow = true; shelf.add(plank);
+  const bracket = (zz) => {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(.36, .3, .08), mat(0xA8763F));
+    b.position.set(-.02, -.2, zz); shelf.add(b);
+  };
+  bracket(-1); bracket(1);
+  [-0.75, 0.85].forEach(zz => {
+    const pot = new THREE.Mesh(new THREE.CylinderGeometry(.16, .13, .3, 12), mat(0xC4704F));
+    pot.position.set(.04, .22, zz); pot.castShadow = true;
+    const bush = new THREE.Mesh(new THREE.SphereGeometry(.22, 10, 8), mat(0x6FA25E));
+    bush.position.set(.04, .46, zz); bush.scale.set(.95, 1.15, .95); bush.castShadow = true;
+    shelf.add(pot, bush);
+  });
+  [0x5A9BD8, 0xF2C14E, 0xE4573D].forEach((c, i) => {
+    const bk = new THREE.Mesh(new THREE.BoxGeometry(.32, .1, .24), mat(c));
+    bk.position.set(.02, .11 + i * .11, .05 + i * .03);
+    bk.rotation.y = YY.rand(-.12, .12); bk.castShadow = true;
+    shelf.add(bk);
+  });
+  shelf.position.set(-10.32, 3.5, 2.2);
+  room.add(shelf);
+
+  /* --- 後牆兩個相框(門左邊、勳章板下方) --- */
+  const makeFrame = (x, y, sky, tilt) => {
+    const g = new THREE.Group();
+    const fr = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.2, .08), mat(0x9C5F30));
+    const pic = new THREE.Mesh(new THREE.BoxGeometry(.8, 1.0, .04), mat(sky));
+    pic.position.z = .04;
+    const sun = new THREE.Mesh(new THREE.SphereGeometry(.12, 10, 8), mat(0xF2C14E));
+    sun.position.set(.2, .28, .07);
+    const hill = new THREE.Mesh(new THREE.SphereGeometry(.36, 12, 8), mat(0x6FA25E));
+    hill.position.set(-.08, -.4, .07); hill.scale.set(1.5, .7, 1);
+    g.add(fr, pic, sun, hill);
+    g.position.set(x, y, -10.34);
+    g.rotation.z = tilt || 0;
+    g.traverse(o => { if(o.isMesh) o.castShadow = true; });
+    room.add(g);
+  };
+  makeFrame(-8.2, 2.8, 0xCFE6F0, .04);
+  makeFrame(-6.0, 2.4, 0xF3E2E6, -.05);
 }
 
 /* ============================================================
@@ -3325,6 +3680,7 @@ function resolveDraw(id, pos){
   YY.applyWear(cre);
   renderWardrobe();
   if(YY.tryRandomMedal) YY.tryRandomMedal(.1);
+  if(YY.tryRandomMedal) YY.tryRandomMedal(.1);
 
   cre.squashV = -.4;                  // 開心一跳
   YY.sfx.chirp();
@@ -3408,14 +3764,20 @@ function renderFamily(){
     const metInfo = F.trait
       ? `${F.rel}<br><span style="color:var(--leaf)">✨ ${F.trait}</span>`
       : F.rel;
+    const metInfo = F.trait
+      ? `${F.rel}<br><span style="color:var(--leaf)">✨ ${F.trait}</span>`
+      : F.rel;
     html += `<div class="fcard ${met ? '' : 'lock'} ${now ? 'now' : ''}" data-id="${id}">
       <div class="dot" style="background:${met ? col : '#DDD'}"></div>
       <b>${met ? F.n : '???'}</b>
+      <small>${met ? metInfo : (prog ? prog.hint : '還沒來訪')}</small>
       <small>${met ? metInfo : (prog ? prog.hint : '還沒來訪')}</small>
       ${hint}
     </div>`;
   }
   body.innerHTML = html + '</div>' + renderPetSection() + renderEggSection()
+    + renderVariantSection() + renderSpiritSection()
+    + (YY.renderMedalSection ? YY.renderMedalSection() : '');
     + renderVariantSection() + renderSpiritSection()
     + (YY.renderMedalSection ? YY.renderMedalSection() : '');
   body.querySelectorAll('.fcard[data-id]').forEach(card => {
@@ -3443,6 +3805,9 @@ function renderFamily(){
       const pet = YY.getPet(b.dataset.pet);
       const L = (YY.petStageProgress(pet).L) || { name:'散步進化', verb:'散步' };
       YY.flash(`帶「${YY.petDisplayName(pet)}」一起!牠是「${L.name}」——多多${L.verb}就會慢慢進化~`, 3800);
+      const pet = YY.getPet(b.dataset.pet);
+      const L = (YY.petStageProgress(pet).L) || { name:'散步進化', verb:'散步' };
+      YY.flash(`帶「${YY.petDisplayName(pet)}」一起!牠是「${L.name}」——多多${L.verb}就會慢慢進化~`, 3800);
       renderFamily();
     };
   });
@@ -3452,6 +3817,9 @@ function renderFamily(){
 function renderPetSection(){
   const pets = YY.ownedPets || [];
   let html = `<div class="fintro" style="margin-top:18px;">🐾 <b>我的寵物</b>——會跟著你到處走。
+    去牙牙森林誘捕新寵物,選一隻「設為散步夥伴」。<b>每種寵物的進化方式不一樣</b>——
+    有的要散步🚶、有的愛吃莓果🫐、有的想被摸摸✋、有的靠一起專注🎯、有的只想靜靜陪你🕰️,
+    進化也比以前慢,要多花點心思陪伴喔!(已收集 ${(YY.metPets||[]).length} / ${YY.PET_ORDER.length} 種)</div>`;
     去牙牙森林誘捕新寵物,選一隻「設為散步夥伴」。<b>每種寵物的進化方式不一樣</b>——
     有的要散步🚶、有的愛吃莓果🫐、有的想被摸摸✋、有的靠一起專注🎯、有的只想靜靜陪你🕰️,
     進化也比以前慢,要多花點心思陪伴喔!(已收集 ${(YY.metPets||[]).length} / ${YY.PET_ORDER.length} 種)</div>`;
@@ -3466,9 +3834,11 @@ function renderPetSection(){
     const active = YY.activePet === pet.uid;
     const col = '#' + P.c.toString(16).padStart(6, '0');
     const L = prog.L || { icon:'🚶', name:'散步進化', unit:'步', verb:'散步' };
+    const L = prog.L || { icon:'🚶', name:'散步進化', unit:'步', verb:'散步' };
     const bar = prog.st >= 2
       ? `<span class="petmax">★ 完全體</span>`
       : `<div class="petbar"><i style="width:${prog.pct}%"></i></div>
+         <small>${L.icon} ${L.name}・再${L.verb}約 ${prog.need} ${L.unit}進化</small>`;
          <small>${L.icon} ${L.name}・再${L.verb}約 ${prog.need} ${L.unit}進化</small>`;
     html += `<div class="petrow ${active ? 'on' : ''}">
       <div class="dot" style="background:${col}"></div>
@@ -3732,6 +4102,8 @@ YY.eatBerry = function(cre){
   if(YY.eggProgressBerry) YY.eggProgressBerry();
   if(YY.addEvoProgress) YY.addEvoProgress('berry', 1);   // #3 貪吃型寵物靠餵莓果進化
   if(YY.tryRandomMedal) YY.tryRandomMedal(.05);
+  if(YY.addEvoProgress) YY.addEvoProgress('berry', 1);   // #3 貪吃型寵物靠餵莓果進化
+  if(YY.tryRandomMedal) YY.tryRandomMedal(.05);
   YY.save();
   /* 扭蛋券改成隨機掉落(約一半機率) */
   if(Math.random() < .55){
@@ -3788,14 +4160,23 @@ YY.companionName = function(){
    各種行為(散步 / 餵莓果 / 摸摸 / Focus / 陪伴)分別呼叫這個函式。 */
 YY.addEvoProgress = function(method, amount){
   if(!amount) return;
+/* #3 通用:依「這隻寵物的進化方式」餵進度,只有方式吻合的當前寵物才會前進。
+   各種行為(散步 / 餵莓果 / 摸摸 / Focus / 陪伴)分別呼叫這個函式。 */
+YY.addEvoProgress = function(method, amount){
+  if(!amount) return;
   const pet = YY.getPet(YY.activePet);
   if(!pet) return;
+  if(YY.petEvoMethod(pet) !== method) return;   // 方式不對 → 這隻不吃這種進度
+
   if(YY.petEvoMethod(pet) !== method) return;   // 方式不對 → 這隻不吃這種進度
 
   const before = YY.petStage(pet);
   pet.prog = YY.petProgVal(pet) + amount;
   if(method === 'walk') pet.walks = pet.prog;    // 散步型同步舊欄位,存檔相容
+  pet.prog = YY.petProgVal(pet) + amount;
+  if(method === 'walk') pet.walks = pet.prog;    // 散步型同步舊欄位,存檔相容
   const after = YY.petStage(pet);
+
 
   if(after > before){
     YY.save();
@@ -3803,6 +4184,9 @@ YY.addEvoProgress = function(method, amount){
     YY.sfx.tada();
     if(YY.cre) YY.spawnConfetti(comp ? comp.x : YY.cre.x, 1.4, comp ? comp.z : YY.cre.z, 30);
     const petName = (YY.PETS[pet.sp] && YY.PETS[pet.sp].n) || '小寵物';
+    const L = YY.PET_EVO_LABEL[method] || YY.PET_EVO_LABEL.walk;
+    YY.flash(`✨ 進化!「${petName}」升級成【${YY.STAGE_TITLE[after]}】了!(${L.name})`, 4600);
+    if(YY.tryRandomMedal) YY.tryRandomMedal(.5);
     const L = YY.PET_EVO_LABEL[method] || YY.PET_EVO_LABEL.walk;
     YY.flash(`✨ 進化!「${petName}」升級成【${YY.STAGE_TITLE[after]}】了!(${L.name})`, 4600);
     if(YY.tryRandomMedal) YY.tryRandomMedal(.5);
@@ -3816,10 +4200,15 @@ YY.addEvoProgress = function(method, amount){
 /* 相容舊呼叫:散步距離 → 只餵給「散步型」寵物 */
 YY.addWalkToActivePet = function(units){ YY.addEvoProgress('walk', units); };
 
+/* 相容舊呼叫:散步距離 → 只餵給「散步型」寵物 */
+YY.addWalkToActivePet = function(units){ YY.addEvoProgress('walk', units); };
+
 /* ---------- 每幀:跟在主人旁邊晃 ---------- */
 YY.updateCompanion = function(dt, t){
   if(!comp || !YY.cre) return;
   const cre = YY.cre;
+  /* #3 「陪伴進化」型寵物:只要當散步夥伴,靜靜陪你就會慢慢累積進度 */
+  if(YY.addEvoProgress) YY.addEvoProgress('time', dt);
   /* #3 「陪伴進化」型寵物:只要當散步夥伴,靜靜陪你就會慢慢累積進度 */
   if(YY.addEvoProgress) YY.addEvoProgress('time', dt);
   const tx = cre.x - .85 + Math.sin(t / 900) * .18;
@@ -3959,7 +4348,16 @@ YY.handleExploreTap = function(ndcX, ndcY){
       let obj = eh[0].object;
       while(obj && obj.parent !== YY.eggGroup) obj = obj.parent;
       if(obj && obj.parent === YY.eggGroup){
+      /* 一路往上找到「直接掛在 eggGroup 底下的那顆蛋 group」,
+         這樣 remove() 才會真的把整顆蛋從地上移掉(先前只找到子 mesh,
+         mesh 不是 eggGroup 的直接子物件 → remove 失敗 → 蛋會一直留在地上) */
+      let obj = eh[0].object;
+      while(obj && obj.parent !== YY.eggGroup) obj = obj.parent;
+      if(obj && obj.parent === YY.eggGroup){
         const tint = obj.userData.tint;
+        const px = obj.position.x, pz = obj.position.z;
+        YY.eggGroup.remove(obj);            // 撿起來 → 蛋立刻從地上消失
+        YY.spawnPuff(px, .4, pz);
         const px = obj.position.x, pz = obj.position.z;
         YY.eggGroup.remove(obj);            // 撿起來 → 蛋立刻從地上消失
         YY.spawnPuff(px, .4, pz);
@@ -4018,6 +4416,7 @@ function resolveCatch(w){
     YY.sfx.tada();
     YY.spawnConfetti(w.x, .6, w.z, info.r === 2 ? 44 : 26);
     YY.catchCount = (YY.catchCount || 0) + 1;
+    if(YY.tryRandomMedal) YY.tryRandomMedal(.18);
     if(YY.tryRandomMedal) YY.tryRandomMedal(.18);
     if(w.kind === 'pet'){
       const firstTime = !YY.metPets.includes(w.species);
@@ -4105,6 +4504,10 @@ YY.updateExplore = function(t, dt){
     if(W.dist > W.nextRewardAt){
       W.nextRewardAt = W.dist + YY.rand(18, 30);
       YY.bumpTrust(1);
+      /* #5 森林散步途中,有機率隨機解鎖一則「牙牙小祕密」 */
+      let gotSecret = false;
+      if(YY.tryUnlockSecret) gotSecret = YY.tryUnlockSecret(.4, 'forest');
+      if(!gotSecret && Math.random() < .4) YY.flash('一起散步好舒服~好感度悄悄 +1', 2200);
       /* #5 森林散步途中,有機率隨機解鎖一則「牙牙小祕密」 */
       let gotSecret = false;
       if(YY.tryUnlockSecret) gotSecret = YY.tryUnlockSecret(.4, 'forest');
@@ -4257,6 +4660,7 @@ function hatchEgg(egg){
   const firstTime = !YY.metSpirits.includes(egg.sp);
   YY.addHomeSpirit(egg.sp);
   YY.sfx.tada();
+  if(YY.tryRandomMedal) YY.tryRandomMedal(.45);
   if(YY.tryRandomMedal) YY.tryRandomMedal(.45);
   if(YY.cre) YY.spawnConfetti(YY.cre.x, 1.6, YY.cre.z, 30);
   YY.flash(firstTime
@@ -5104,6 +5508,7 @@ YY.switchCharacter(YY.currentChar, false);
 YY.cre.tx = 0; YY.cre.tz = 1.2; YY.cre.x = 0; YY.cre.z = 1.2;
 YY.initPanels();
 if(YY.initSecrets) YY.initSecrets();
+if(YY.initSecrets) YY.initSecrets();
 YY.initBerry();
 YY.initToyBall();
 YY.initVision();
@@ -5150,6 +5555,7 @@ YY.onModeChange = function(m, prev){
   } else if(m === 'explore'){
     YY.enterForest();
     YY.flash('🌲 走出房間門,來到牙牙森林!點地板散步、點精靈/寵物選中牠、按「🫐 誘捕」丟莓果,還能撿蛋帶回家孵化', 5200);
+    if(YY.tryRandomMedal) YY.tryRandomMedal(.12);
     if(YY.tryRandomMedal) YY.tryRandomMedal(.12);
     if(YY.setPiP) YY.setPiP(false);
   } else if(YY.setPiP){
@@ -5273,6 +5679,8 @@ function pet(){
   YY.bumpTrust(2);                       // 摸摸會加好感度(順便更新那條進度條)
   YY.patCount = (YY.patCount || 0) + 1;
   if(YY.eggProgressPat) YY.eggProgressPat();
+  if(YY.addEvoProgress) YY.addEvoProgress('pat', 1);   // #3 撒嬌型寵物靠摸摸進化
+  if(YY.tryRandomMedal) YY.tryRandomMedal(.04);
   if(YY.addEvoProgress) YY.addEvoProgress('pat', 1);   // #3 撒嬌型寵物靠摸摸進化
   if(YY.tryRandomMedal) YY.tryRandomMedal(.04);
   /* 扭蛋券改成「隨機掉落」,不再是摸幾下就一定有 */
