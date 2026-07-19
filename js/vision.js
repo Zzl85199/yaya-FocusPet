@@ -200,7 +200,7 @@ YY.detectHeadAngle = async function(videoEl){
     const eyeSpan = Math.abs(re[3].x - le[0].x) || 1;
     /* 鼻尖相對兩眼中點的水平偏移 → 轉頭。原始鏡頭未鏡像,轉頭時鼻尖往反方向偏,
        這裡取 (eyeMidX - noseTip.x) 讓「往右轉頭 → 往右看」符合直覺。 */
-    const yaw   = YY.clamp((eyeMidX - noseTip.x) / eyeSpan * 2.6, -1, 1);
+    const yaw   = YY.clamp((noseTip.x - eyeMidX) / eyeSpan * 2.6, -1, 1);
     /* 鼻尖相對眼睛線的高低 → 抬頭/低頭(扣掉臉正對時的基準比例) */
     const pitch = YY.clamp(((noseTip.y - eyeMidY) / eyeSpan - 0.62) * 1.9, -1, 1);
     return { yaw, pitch };
