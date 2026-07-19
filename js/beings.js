@@ -29,21 +29,66 @@ YY.PETS = {
 };
 YY.PET_ORDER = Object.keys(YY.PETS);
 
-/* 帶去散步累積的距離門檻:0→1 需 24,1→2 再 40(共 64) */
-YY.PET_EVOLVE = [24, 64];
 YY.STAGE_TITLE = ['幼生', '成長', '完全體'];
+
+/* ============================================================
+   #3 進化系統:每種寵物有「不同的進化方式」,而且整體變慢
+   -----------------------------------------------------------
+   evo 方式(每種寵物專屬一種):
+     walk  🚶 帶去牙牙森林散步(累積距離)
+     berry 🫐 在家餵莓果(次數)
+     pat   ✋ 常常摸摸牠(次數)
+     focus 🎯 開眼神感應一起 Focus Mode(秒數)
+     time  🕰️ 讓牠當散步夥伴,靜靜陪你(秒數)
+   舊版只能靠散步、而且門檻只有 24/64 太快;現在門檻大幅提高。
+   ============================================================ */
+YY.PET_EVO = {
+  cottonbun:'walk',  pip:'walk',    hoppy:'walk',
+  fluff:'berry',     paddle:'berry',
+  mochi:'pat',       crystalfox:'pat',
+  spike:'focus',     ember:'focus',  starcat:'focus',
+  bubble:'time',     slowpoke:'time',
+  toffee:'walk',
+};
+YY.petEvoMethod = pet => YY.PET_EVO[pet.sp] || 'walk';
+
+/* 每種方式的兩段門檻(0→1、0→2);比舊版慢很多,單位各自不同 */
+YY.PET_EVO_NEED = {
+  walk:  [90, 240],    // 散步距離(世界單位)
+  berry: [6, 16],      // 餵莓果次數
+  pat:   [30, 80],     // 摸摸次數
+  focus: [180, 480],   // Focus 專注秒數
+  time:  [420, 1080],  // 當散步夥伴的陪伴秒數
+};
+YY.PET_EVO_LABEL = {
+  walk:  { icon:'🚶', name:'散步進化', unit:'步', verb:'散步' },
+  berry: { icon:'🫐', name:'美食進化', unit:'次', verb:'餵莓果' },
+  pat:   { icon:'✋', name:'親密進化', unit:'次', verb:'摸摸牠' },
+  focus: { icon:'🎯', name:'專注進化', unit:'秒', verb:'一起 Focus' },
+  time:  { icon:'🕰️', name:'陪伴進化', unit:'秒', verb:'讓牠陪著你' },
+};
+
+/* 取得某隻寵物目前累積的進度值(相容舊存檔:只有散步型才沿用舊 walks) */
+YY.petProgVal = function(pet){
+  if(pet.prog != null) return pet.prog;
+  return YY.petEvoMethod(pet) === 'walk' ? (pet.walks || 0) : 0;
+};
 YY.petStage = function(pet){
-  const w = pet.walks || 0;
-  if(w >= YY.PET_EVOLVE[1]) return 2;
-  if(w >= YY.PET_EVOLVE[0]) return 1;
+  const p = YY.petProgVal(pet);
+  const need = YY.PET_EVO_NEED[YY.petEvoMethod(pet)] || YY.PET_EVO_NEED.walk;
+  if(p >= need[1]) return 2;
+  if(p >= need[0]) return 1;
   return 0;
 };
 YY.petStageProgress = function(pet){
-  const st = YY.petStage(pet), w = pet.walks || 0;
-  if(st >= 2) return { st, pct:100, need:0, max:1 };
-  const lo = st === 0 ? 0 : YY.PET_EVOLVE[0];
-  const hi = YY.PET_EVOLVE[st];
-  return { st, pct: Math.round((w - lo) / (hi - lo) * 100), need: Math.ceil(hi - w), max: hi - lo };
+  const st = YY.petStage(pet), p = YY.petProgVal(pet);
+  const need = YY.PET_EVO_NEED[YY.petEvoMethod(pet)] || YY.PET_EVO_NEED.walk;
+  const L = YY.PET_EVO_LABEL[YY.petEvoMethod(pet)] || YY.PET_EVO_LABEL.walk;
+  if(st >= 2) return { st, pct:100, need:0, max:1, method:YY.petEvoMethod(pet), L };
+  const lo = st === 0 ? 0 : need[0];
+  const hi = need[st];
+  return { st, pct: Math.round((p - lo) / (hi - lo) * 100), need: Math.ceil(hi - p), max: hi - lo,
+    method:YY.petEvoMethod(pet), L };
 };
 YY.petDisplayName = function(pet){
   const P = YY.PETS[pet.sp]; if(!P) return '小寵物';

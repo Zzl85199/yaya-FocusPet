@@ -110,6 +110,7 @@ function tryUnlockVariant(guaranteed){
   const V = YY.FAMILY[id];
   YY.sfx.tada();
   YY.spawnConfetti(YY.cre.x, 2.4 * YY.cre.def.size, YY.cre.z, 40);
+  if(YY.tryRandomMedal) YY.tryRandomMedal(.4);
   YY.flash(`🌟 異種解鎖!你的專注引來了「${V.n}」——去家族面板看看牠吧!`, 4600);
   if(document.getElementById('family').classList.contains('on') && YY.renderFamily) YY.renderFamily();
   return true;
@@ -119,6 +120,7 @@ YY.debugUnlockVariant = () => tryUnlockVariant(true);   // 除錯用
 /* ---------- #3 專注獎勵機制 ---------- */
 function rollReward(){
   const cre = YY.cre;
+  if(YY.tryRandomMedal) YY.tryRandomMedal(.15);
   const roll = Math.random();
   if(roll < .12 && lockedVariants().length){
     if(tryUnlockVariant(false)) return;
@@ -181,7 +183,10 @@ YY.updateFocusExtras = function(t, dt){
   }
   if(!YY.attention.trueGaze) return;   // 小功能只在你眼睛真的看著螢幕時才出現
   if(t / 1000 > nextFlavorAt){
-    playFlavor();
+    /* #5 Focus Mode 中,有機率隨機解鎖一則「牙牙小祕密」,否則播一般小動作 */
+    let gotSecret = false;
+    if(YY.tryUnlockSecret && Math.random() < .45) gotSecret = YY.tryUnlockSecret(1, 'focus');
+    if(!gotSecret) playFlavor();
     nextFlavorAt = t / 1000 + YY.rand(35, 70);
   }
 };

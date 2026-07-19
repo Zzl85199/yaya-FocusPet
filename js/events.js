@@ -65,6 +65,7 @@ function familyVisit(id, unlockMsg){
     if(firstTime){
       YY.metFamily.push(id);
       YY.addTickets(2, `第一次見到 ${F.n}!`);
+      if(YY.tryRandomMedal) YY.tryRandomMedal(.6);
     }
     YY.save();
     setTimeout(() => {
@@ -173,6 +174,8 @@ YY.eatBerry = function(cre){
   YY.bumpTrust(4);                          // 餵食很加分,好感度 +4
   YY.berryFed = (YY.berryFed || 0) + 1;     // 給芽媽解鎖條件、也順便餵「餵莓果」條件的蛋
   if(YY.eggProgressBerry) YY.eggProgressBerry();
+  if(YY.addEvoProgress) YY.addEvoProgress('berry', 1);   // #3 貪吃型寵物靠餵莓果進化
+  if(YY.tryRandomMedal) YY.tryRandomMedal(.05);
   YY.save();
   /* 扭蛋券改成隨機掉落(約一半機率) */
   if(Math.random() < .55){

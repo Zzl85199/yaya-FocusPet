@@ -106,6 +106,7 @@ function hatchEgg(egg){
   const firstTime = !YY.metSpirits.includes(egg.sp);
   YY.addHomeSpirit(egg.sp);
   YY.sfx.tada();
+  if(YY.tryRandomMedal) YY.tryRandomMedal(.45);
   if(YY.cre) YY.spawnConfetti(YY.cre.x, 1.6, YY.cre.z, 30);
   YY.flash(firstTime
     ? `🐣 蛋孵化了!首次發現「${S.n}」——牠住進你家了!`

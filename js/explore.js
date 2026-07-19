@@ -105,11 +105,16 @@ YY.handleExploreTap = function(ndcX, ndcY){
   if(YY.eggGroup.children.length){
     const eh = _ray.intersectObject(YY.eggGroup, true);
     if(eh.length){
-      let obj = eh[0].object; while(obj && !obj.userData.eggUid) obj = obj.parent;
-      if(obj){
+      /* 一路往上找到「直接掛在 eggGroup 底下的那顆蛋 group」,
+         這樣 remove() 才會真的把整顆蛋從地上移掉(先前只找到子 mesh,
+         mesh 不是 eggGroup 的直接子物件 → remove 失敗 → 蛋會一直留在地上) */
+      let obj = eh[0].object;
+      while(obj && obj.parent !== YY.eggGroup) obj = obj.parent;
+      if(obj && obj.parent === YY.eggGroup){
         const tint = obj.userData.tint;
-        YY.eggGroup.remove(obj);
-        YY.spawnPuff(obj.position.x, .4, obj.position.z);
+        const px = obj.position.x, pz = obj.position.z;
+        YY.eggGroup.remove(obj);            // 撿起來 → 蛋立刻從地上消失
+        YY.spawnPuff(px, .4, pz);
         YY.addEgg(tint);
         return;
       }
@@ -165,6 +170,7 @@ function resolveCatch(w){
     YY.sfx.tada();
     YY.spawnConfetti(w.x, .6, w.z, info.r === 2 ? 44 : 26);
     YY.catchCount = (YY.catchCount || 0) + 1;
+    if(YY.tryRandomMedal) YY.tryRandomMedal(.18);
     if(w.kind === 'pet'){
       const firstTime = !YY.metPets.includes(w.species);
       YY.addPet(w.species);
@@ -251,7 +257,10 @@ YY.updateExplore = function(t, dt){
     if(W.dist > W.nextRewardAt){
       W.nextRewardAt = W.dist + YY.rand(18, 30);
       YY.bumpTrust(1);
-      if(Math.random() < .4) YY.flash('一起散步好舒服~好感度悄悄 +1', 2200);
+      /* #5 森林散步途中,有機率隨機解鎖一則「牙牙小祕密」 */
+      let gotSecret = false;
+      if(YY.tryUnlockSecret) gotSecret = YY.tryUnlockSecret(.4, 'forest');
+      if(!gotSecret && Math.random() < .4) YY.flash('一起散步好舒服~好感度悄悄 +1', 2200);
     }
   }
 };
